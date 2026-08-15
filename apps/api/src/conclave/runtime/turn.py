@@ -239,7 +239,9 @@ async def run_expert_turn(
                 labeler = getattr(provider_used, "chip", None)
                 label = labeler(call["name"], call["args"] or {}) if labeler else None
                 chips.append(label or f"Used {call['name']}")
-            messages.append(ToolMessage(content=result[:8000], tool_call_id=call["id"]))
+            # Whole result, no second cap: attachments are evidence, and a silent
+            # cut here is invisible to the expert reading it.
+            messages.append(ToolMessage(content=result, tool_call_id=call["id"]))
 
     return TurnOutcome(
         act=TurnAct(action="forfeit", message="", thought="Hit the tool budget without submitting."),

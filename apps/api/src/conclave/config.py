@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     enable_fake_provider: bool = False
     fake_turn_delay: float = 0.4
 
+    # Attachments are delivered whole: documents are evidence, and silently
+    # dropping their tail produces confidently wrong deliberation. 0 = no limit.
+    attachment_max_chars: int = 0
+    ocr_max_pages: int = 0
+
     runner_concurrency: int = 8
     lease_seconds: int = 90
     # A room whose turns error must not race the lap counter: back off between

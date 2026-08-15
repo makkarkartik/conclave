@@ -9,10 +9,6 @@ from conclave.db.session import DATA_DIR
 from conclave.domain.redact import redact_pii
 
 ALLOWED_SUFFIXES = {".md", ".txt", ".csv", ".json", ".pdf", ".docx"}
-MAX_READ_CHARS = 12_000
-MAX_PDF_PAGES = 50
-# OCR is CPU-bound (~1-3s/page): cap pages so one scan can't stall a turn for minutes.
-MAX_OCR_PAGES = 10
 
 _ocr_engine = None
 
@@ -73,15 +69,17 @@ def _ocr_pdf_text(p: Path) -> str:
         ocr = _get_ocr()
         pdf = pdfium.PdfDocument(str(p))
         try:
+            limit = settings.ocr_max_pages or len(pdf)
             pages: list[str] = []
             for i in range(len(pdf)):
-                if i >= MAX_OCR_PAGES:
-                    pages.append(f"…[{len(pdf) - MAX_OCR_PAGES} more pages not OCRed]")
+                if i >= limit:
+                    pages.append(f"…[{len(pdf) - limit} more pages not OCRed]")
                     break
                 bitmap = pdf[i].render(scale=2.0)  # ~144 dpi: decent recognition, sane speed
                 result, _ = ocr(np.array(bitmap.to_pil()))
                 if result:
-                    pages.append("\n".join(item[1] for item in result))
+                    # Page markers keep chronology legible across a long record.
+                    pages.append(f"[page {i + 1}]\n" + "\n".join(item[1] for item in result))
             return "\n\n".join(pages).strip()
         finally:
             pdf.close()
@@ -96,10 +94,7 @@ def _extract_pdf_text(p: Path) -> tuple[str, str]:
 
         reader = PdfReader(str(p))
         pages: list[str] = []
-        for i, page in enumerate(reader.pages):
-            if i >= MAX_PDF_PAGES:
-                pages.append(f"…[{len(reader.pages) - MAX_PDF_PAGES} more pages truncated]")
-                break
+        for page in reader.pages:
             pages.append(page.extract_text() or "")
         text = "\n\n".join(pages).strip()
         if text:
@@ -161,8 +156,9 @@ def extract_attachment(path: str) -> Extraction:
             method = "empty"
     if settings.redact_pii:
         text = redact_pii(text)
-    if len(text) > MAX_READ_CHARS:
-        text = text[:MAX_READ_CHARS] + "\n…[truncated]"
+    cap = settings.attachment_max_chars
+    if cap and len(text) > cap:
+        text = text[:cap] + f"\n…[truncated at {cap} chars — raise CONCLAVE_ATTACHMENT_MAX_CHARS]"
     return Extraction(text, method, len(text))
 
 

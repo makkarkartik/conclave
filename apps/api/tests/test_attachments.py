@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from conclave.domain.files import MAX_READ_CHARS, read_attachment_text
+from conclave.config import settings
+from conclave.domain.files import read_attachment_text
 
 
 def _minimal_pdf(text: str) -> bytes:
@@ -85,9 +86,20 @@ def test_image_only_pdf_falls_back_to_ocr(tmp_path: Path):
     assert "conclave" in text.lower() or "42" in text
 
 
-def test_text_passthrough_and_cap(tmp_path: Path):
+def test_long_document_is_delivered_whole(tmp_path: Path):
+    """No silent truncation: a long record reaches the room in full."""
+    body = "x" * 50_000
     f = tmp_path / "notes.md"
-    f.write_text("x" * (MAX_READ_CHARS + 500), encoding="utf-8")
+    f.write_text(body, encoding="utf-8")
     text = read_attachment_text(str(f))
-    assert text.endswith("…[truncated]")
-    assert len(text) <= MAX_READ_CHARS + 20
+    assert len(text) == len(body)
+    assert "truncated" not in text
+
+
+def test_explicit_cap_truncates_visibly(tmp_path: Path, monkeypatch):
+    """If an operator sets a cap, the cut is announced, never silent."""
+    monkeypatch.setattr(settings, "attachment_max_chars", 100)
+    f = tmp_path / "notes.md"
+    f.write_text("y" * 500, encoding="utf-8")
+    text = read_attachment_text(str(f))
+    assert "truncated at 100 chars" in text
