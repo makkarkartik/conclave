@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Conversation, Expert } from '../../shared/lib/api'
@@ -6,6 +7,11 @@ import type { Conversation, Expert } from '../../shared/lib/api'
  * The printable document. Hidden on screen; the only visible element when the
  * browser prints. It reuses `.solution-md` so the PDF matches the card exactly
  * rather than approximating it.
+ *
+ * Rendered through a portal to <body>, outside #root: printing hides the app
+ * with `display: none`, and an element nested inside it would be hidden too.
+ * (Hiding the app with `visibility: hidden` instead leaves its full height in
+ * the layout, which is what produced pages of trailing blanks.)
  */
 export function SolutionPrint({
   active,
@@ -22,7 +28,7 @@ export function SolutionPrint({
     timeStyle: 'short',
   })
 
-  return (
+  return createPortal(
     <div className="print-only" id="solution-print">
       <header className="print-head">
         <div className="print-brand">
@@ -48,6 +54,7 @@ export function SolutionPrint({
       <div className="solution-md">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

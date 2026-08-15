@@ -37,6 +37,19 @@ test('converged solution exports to a styled PDF', async ({ page, request }) => 
   await expect(printRoot).toBeVisible()
   const bg = await printRoot.evaluate((el) => getComputedStyle(el).backgroundColor)
   expect(bg).toBe('rgb(18, 20, 26)') // --color-ink
+
+  // The app must contribute no layout height, or its hidden bulk becomes
+  // trailing blank pages in the PDF.
+  const appHeight = await page.evaluate(
+    () => document.getElementById('root')?.getBoundingClientRect().height ?? -1,
+  )
+  expect(appHeight).toBe(0)
+
+  // The printed document's own height should account for the whole document.
+  const printHeight = await printRoot.evaluate((el) => el.getBoundingClientRect().height)
+  const bodyHeight = await page.evaluate(() => document.body.scrollHeight)
+  expect(bodyHeight).toBeLessThanOrEqual(printHeight + 40)
+
   await page.screenshot({ path: `${OUT}/print-view.png`, fullPage: true })
 
   const pdf = await page.pdf({
@@ -47,5 +60,10 @@ test('converged solution exports to a styled PDF', async ({ page, request }) => 
   expect(pdf.byteLength).toBeGreaterThan(10_000)
   await page.emulateMedia({ media: 'screen' })
 
-  console.log(`[export] pdf bytes=${pdf.byteLength} chars=${printedText.length}`)
+  // Page count must match the content, with no blank tail.
+  const pages = Math.max(1, Math.round(printHeight / (11.7 * 96)))
+  console.log(
+    `[export] pdf bytes=${pdf.byteLength} chars=${printedText.length} ` +
+      `printHeight=${Math.round(printHeight)}px ~pages=${pages} appHeight=${appHeight}`,
+  )
 })

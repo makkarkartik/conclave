@@ -179,8 +179,11 @@ body {
 }
 
 @media print {
+  /* Zero page margin: the dark ground then runs edge to edge as on screen, and
+     the browser has no margin box in which to draw its date/URL/page headers.
+     Page padding is applied inside the document instead. */
   @page {
-    margin: 14mm;
+    margin: 0;
   }
 
   /* Keep the dark palette in the PDF — browsers drop backgrounds otherwise. */
@@ -190,31 +193,23 @@ body {
   }
 
   html,
-  body,
-  #root {
+  body {
     height: auto;
     background: var(--color-ink);
   }
 
-  /* Print the solution only, not the app chrome around it. */
-  body * {
-    visibility: hidden;
-  }
-
-  .print-only,
-  .print-only * {
-    visibility: visible;
+  /* display:none, not visibility:hidden — a hidden app still occupies its full
+     height and pads the PDF with blank pages. */
+  #root {
+    display: none !important;
   }
 
   .print-only {
     display: block;
-    position: absolute;
-    inset: 0 auto auto 0;
-    width: 100%;
-    padding: 0;
     background: var(--color-ink);
     color: var(--color-speak);
     font-family: var(--font-body);
+    padding: 14mm 15mm;
   }
 
   .print-head {
