@@ -15,11 +15,11 @@ from conclave.db.ids import new_id
 from conclave.db.models import Conversation, Expert, Message
 from conclave.db.session import SessionLocal
 from conclave.domain.converge import lap_converged, proposal_fingerprint
-from conclave.domain.crypto import decrypt_secret
 from conclave.domain.diff import format_doc_change
 from conclave.domain.files import edit_shared_doc, read_shared_doc, write_shared_doc
 from conclave.runtime.turn import TurnOutcome, run_expert_turn
 from conclave.services.context import build_turn_context, fold_lap_into_summary
+from conclave.services.keys import resolve_api_key
 
 log = logging.getLogger("conclave.runner")
 
@@ -126,7 +126,7 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                     persona=expert.persona,
                     provider=expert.provider,
                     model=expert.model,
-                    api_key=decrypt_secret(expert.api_key_encrypted),
+                    api_key=await resolve_api_key(db, expert),
                     topic=conv.topic,
                     user_direction=conv.user_direction,
                     lap=conv.lap,

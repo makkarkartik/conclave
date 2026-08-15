@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal } from '../../shared/ui/Modal'
 import { api, type Expert } from '../../shared/lib/api'
 
@@ -29,16 +29,39 @@ export function ExpertModal({
   })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [storedKeys, setStoredKeys] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    api
+      .listProviderKeys()
+      .then((keys) => setStoredKeys(Object.fromEntries(keys.map((k) => [k.provider, k.key_hint]))))
+      .catch(() => {})
+  }, [])
+
+  const storedHint = storedKeys[form.provider]
 
   return (
     <Modal title={editing ? 'Edit connector' : 'Add configured expert'} onClose={onClose}>
       <p className="mb-4 text-xs leading-relaxed text-[var(--color-think)]">
         Needs a <strong className="text-white">developer API key</strong> from OpenAI, Anthropic, or Google AI
         Studio. ChatGPT Plus or Claude Pro alone will not work.
-        {editing && (
+        {editing && expert?.key_source === 'provider' && (
           <>
             {' '}
-            Leave API key blank to keep the current key ({expert?.api_key_masked}).
+            This expert uses the shared {expert.provider} key ({expert.api_key_masked}). Entering a key
+            here rotates that shared key for every expert using it.
+          </>
+        )}
+        {editing && expert?.key_source === 'own' && (
+          <>
+            {' '}
+            This expert has its own key ({expert.api_key_masked}); entering a new one replaces it.
+          </>
+        )}
+        {!editing && storedHint && (
+          <>
+            {' '}
+            A {form.provider} key is already stored ({storedHint}) — leave the API key blank to reuse it.
           </>
         )}
       </p>
@@ -48,7 +71,7 @@ export function ExpertModal({
             ['name', 'Name'],
             ['persona', 'Persona (optional)'],
             ['model', 'Model'],
-            ['api_key', editing ? 'API key (optional)' : 'API key'],
+            ['api_key', editing || storedHint ? 'API key (optional)' : 'API key'],
           ] as const
         ).map(([key, label]) => (
           <label key={key} className="block text-xs text-[var(--color-think)]">

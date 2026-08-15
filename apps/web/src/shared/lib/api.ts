@@ -6,7 +6,15 @@ export type Expert = {
   model: string
   accent: string
   api_key_masked: string
+  key_source: 'own' | 'provider' | 'none'
   created_at: string
+}
+
+export type ProviderKey = {
+  provider: string
+  key_hint: string
+  expert_count: number
+  updated_at: string
 }
 
 export type Message = {
@@ -89,6 +97,13 @@ export const api = {
     }),
   deleteExpert: (id: string) => req<{ ok: boolean }>(`/experts/${id}`, { method: 'DELETE' }),
   testExpert: (id: string) => req<{ ok: boolean; reply: string }>(`/experts/${id}/test`, { method: 'POST' }),
+  listProviderKeys: () => req<ProviderKey[]>('/provider-keys'),
+  putProviderKey: (provider: string, api_key: string) =>
+    req<ProviderKey>(`/provider-keys/${provider}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key }),
+    }),
   listConversations: () => req<Conversation[]>('/conversations'),
   getConversation: (id: string) => req<Conversation>(`/conversations/${id}`),
   getUpdates: (id: string, after?: string) =>

@@ -5,7 +5,14 @@ from conclave.domain.files import read_shared_doc
 from conclave.domain.schemas import AttachmentOut, ConversationOut, ExpertOut, MessageOut
 
 
-def expert_out(e: Expert) -> ExpertOut:
+def expert_out(e: Expert, provider_hints: dict[str, str] | None = None) -> ExpertOut:
+    hints = provider_hints or {}
+    if e.api_key_encrypted:
+        masked, source = e.api_key_hint, "own"
+    elif e.provider in hints:
+        masked, source = hints[e.provider], "provider"
+    else:
+        masked, source = "", "none"
     return ExpertOut(
         id=e.id,
         name=e.name,
@@ -13,7 +20,8 @@ def expert_out(e: Expert) -> ExpertOut:
         provider=e.provider,
         model=e.model,
         accent=e.accent,
-        api_key_masked=e.api_key_hint,
+        api_key_masked=masked,
+        key_source=source,
         created_at=e.created_at,
     )
 

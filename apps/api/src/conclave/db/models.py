@@ -34,6 +34,26 @@ class Tenant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class ProviderKey(Base):
+    """One shared BYOK key per (tenant, provider). Experts use it unless they
+    carry their own override in api_key_encrypted."""
+
+    __tablename__ = "provider_keys"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "provider", name="uq_provider_keys_tenant_provider"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(40))
+    key_encrypted: Mapped[str] = mapped_column(Text)
+    key_hint: Mapped[str] = mapped_column(String(20), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class Expert(Base):
     __tablename__ = "experts"
     __table_args__ = (Index("ix_experts_tenant_created", "tenant_id", "created_at"),)

@@ -77,12 +77,14 @@ async def test_persistent_errors_pause_room_instead_of_burning_laps(
 
     cid, eids = await _make_room("pause")
     try:
+        # Drive turns directly: another runner (e.g. a dev server's embedded
+        # runner) may hold the claim, and this behavior is claim-independent.
         for _ in range(10):
-            async with SessionLocal() as db:
-                claimed = await turn_runner.claim_next(db, "err-worker")
-            if claimed is None:
-                break
             await turn_runner.run_one_turn(cid, "err-worker")
+            async with SessionLocal() as db:
+                conv = await db.get(Conversation, cid)
+                if conv.status != "running":
+                    break
 
         async with SessionLocal() as db:
             conv = await db.get(Conversation, cid)

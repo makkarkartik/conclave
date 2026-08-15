@@ -16,7 +16,8 @@ class ExpertCreate(BaseModel):
     persona: str = ""
     provider: Provider
     model: str
-    api_key: str
+    # Optional when the tenant already stores a key for this provider.
+    api_key: str = ""
     accent: str = "#6BA3FF"
 
 
@@ -26,6 +27,8 @@ class ExpertUpdate(BaseModel):
     provider: Provider | None = None
     model: str | None = None
     api_key: str | None = None
+    # True clears the expert's own key so it falls back to the shared provider key.
+    use_provider_key: bool | None = None
     accent: str | None = None
 
 
@@ -37,9 +40,22 @@ class ExpertOut(BaseModel):
     model: str
     accent: str
     api_key_masked: str
+    # "own" = expert-specific override; "provider" = shared tenant key; "none" = no key
+    key_source: Literal["own", "provider", "none"] = "none"
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ProviderKeyOut(BaseModel):
+    provider: str
+    key_hint: str
+    expert_count: int = 0
+    updated_at: datetime
+
+
+class ProviderKeyPut(BaseModel):
+    api_key: str
 
 
 class ConversationCreate(BaseModel):

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from conclave.api import conversations, experts
+from conclave.api import conversations, experts, provider_keys
 from conclave.config import settings
 from conclave.db.session import init_db
 from conclave.services.turn_runner import runner_loop
@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(experts.router, prefix="/api")
+    app.include_router(provider_keys.router, prefix="/api")
     app.include_router(conversations.router, prefix="/api")
 
     @app.get("/api/health")
