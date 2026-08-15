@@ -76,6 +76,45 @@ async def test_empty_file_is_rejected(client):
         await client.delete(f"/api/conversations/{cid}")
 
 
+async def test_duplicate_filename_is_rejected(client):
+    """Impatient re-clicks during a slow OCR upload must not stack copies of the
+    same document into the room's context."""
+    cid = await _room(client)
+    try:
+        f = {"file": ("dupe.md", b"# Same file twice", "text/markdown")}
+        assert (await client.post(f"/api/conversations/{cid}/files", files=f)).status_code == 200
+        second = await client.post(f"/api/conversations/{cid}/files", files=f)
+        assert second.status_code == 400
+        assert "already attached" in second.json()["detail"]
+
+        conv = (await client.get(f"/api/conversations/{cid}")).json()
+        assert len(conv["attachments"]) == 1
+    finally:
+        await client.delete(f"/api/conversations/{cid}")
+
+
+async def test_attachment_can_be_removed(client):
+    cid = await _room(client)
+    try:
+        up = await client.post(
+            f"/api/conversations/{cid}/files",
+            files={"file": ("temp.md", b"remove me", "text/markdown")},
+        )
+        aid = up.json()["id"]
+        assert (await client.delete(f"/api/conversations/{cid}/files/{aid}")).status_code == 200
+
+        conv = (await client.get(f"/api/conversations/{cid}")).json()
+        assert conv["attachments"] == []
+        # Same name can now be attached again
+        again = await client.post(
+            f"/api/conversations/{cid}/files",
+            files={"file": ("temp.md", b"remove me", "text/markdown")},
+        )
+        assert again.status_code == 200
+    finally:
+        await client.delete(f"/api/conversations/{cid}")
+
+
 async def test_unsupported_type_is_rejected(client):
     cid = await _room(client)
     try:

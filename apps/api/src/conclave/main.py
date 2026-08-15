@@ -14,9 +14,21 @@ from conclave.db.session import init_db
 from conclave.services.turn_runner import runner_loop
 
 
+async def _prewarm_ocr() -> None:
+    """Load the OCR models in the background: first-use load costs ~30s, and
+    paying it here keeps the first scanned-PDF upload from doubling in latency."""
+    from conclave.domain.files import _get_ocr
+
+    try:
+        await asyncio.to_thread(_get_ocr)
+    except Exception:  # noqa: BLE001 — OCR is optional; uploads still work without prewarm
+        pass
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await init_db()
+    asyncio.create_task(_prewarm_ocr())
     runner_task: asyncio.Task | None = None
     if settings.embed_runner:
         # Dev convenience: one process runs both roles. In prod set

@@ -194,6 +194,11 @@ async def upload_file(
     suffix = Path(name).suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
         raise HTTPException(400, f"Unsupported type {suffix}")
+    # Re-attaching the same file wastes a room's context on a duplicate copy —
+    # and is what impatient re-clicks during a slow OCR upload produce.
+    if any(a.filename == name for a in conv.attachments):
+        raise HTTPException(400, f"'{name}' is already attached to this room.")
+
     dest_dir = conversation_dir(conversation_id) / "files"
     dest = dest_dir / f"{new_id()}_{name}"
     data = await file.read()
@@ -234,6 +239,20 @@ async def upload_file(
         "extracted_chars": att.extracted_chars,
         "extraction_method": att.extraction_method,
     }
+
+
+@router.delete("/{conversation_id}/files/{attachment_id}")
+async def delete_attachment(
+    conversation_id: str, attachment_id: str, db: AsyncSession = Depends(get_db)
+):
+    conv = await _get_conv(db, conversation_id)
+    att = next((a for a in conv.attachments if a.id == attachment_id), None)
+    if att is None:
+        raise HTTPException(404, "Attachment not found")
+    Path(att.path).unlink(missing_ok=True)
+    await db.delete(att)
+    await db.commit()
+    return {"ok": True}
 
 
 @router.get("/{conversation_id}/shared-doc")

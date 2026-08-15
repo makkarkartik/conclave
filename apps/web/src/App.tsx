@@ -39,6 +39,8 @@ export default function App() {
               speakingId={app.speakingId}
               expertMap={app.expertMap}
               onAttach={app.onAttach}
+              attaching={app.attaching}
+              onRemoveAttachment={app.onRemoveAttachment}
               onOpenDoc={() => app.setShowDoc(true)}
               onPause={() => app.setShowPause(true)}
               onStartOrResume={

@@ -160,6 +160,8 @@ export const api = {
       extraction_method: string
     }>
   },
+  deleteAttachment: (id: string, attachmentId: string) =>
+    req<{ ok: boolean }>(`/conversations/${id}/files/${attachmentId}`, { method: 'DELETE' }),
   putSharedDoc: (id: string, content: string) =>
     req<{ content: string }>(`/conversations/${id}/shared-doc`, {
       method: 'PUT',

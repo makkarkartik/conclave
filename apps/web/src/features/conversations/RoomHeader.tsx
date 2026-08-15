@@ -1,4 +1,4 @@
-import { FileText, Paperclip, Pause, Play } from 'lucide-react'
+import { FileText, Loader2, Paperclip, Pause, Play, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
 import type { Attachment, Conversation, Expert } from '../../shared/lib/api'
@@ -19,6 +19,8 @@ export function RoomHeader({
   speakingId,
   expertMap,
   onAttach,
+  attaching,
+  onRemoveAttachment,
   onOpenDoc,
   onPause,
   onStartOrResume,
@@ -28,6 +30,8 @@ export function RoomHeader({
   speakingId: string | null
   expertMap: Record<string, Expert>
   onAttach: (file: File) => void
+  attaching: string | null
+  onRemoveAttachment: (attachmentId: string) => void
   onOpenDoc: () => void
   onPause: () => void
   onStartOrResume: () => void
@@ -60,17 +64,35 @@ export function RoomHeader({
                 : active.status}
               {active.lap > 0 ? ` · lap ${active.lap}` : ''}
             </span>
-            {active.attachments.length > 0 && (
+            {(active.attachments.length > 0 || attaching) && (
               <span className="flex flex-wrap items-center gap-1.5">
+                {attaching && (
+                  <span
+                    title="Extracting text — scanned PDFs are run through OCR, which can take up to a minute"
+                    className="flex items-center gap-1 rounded-full border border-[var(--color-sky)]/40 bg-[rgba(107,163,255,0.12)] px-2 py-0.5 text-[10px] text-[var(--color-sky)]"
+                  >
+                    <Loader2 size={10} className="animate-spin" />
+                    <span className="max-w-[14rem] truncate">{attaching}</span>
+                    <span className="text-[var(--color-think)]">reading…</span>
+                  </span>
+                )}
                 {active.attachments.map((a) => (
                   <span
                     key={a.id}
                     title={`${a.filename} — ${describeExtraction(a)} available to the room`}
-                    className="flex items-center gap-1 rounded-full border border-[var(--color-line)] px-2 py-0.5 text-[10px] text-[var(--color-think)]"
+                    className="group flex items-center gap-1 rounded-full border border-[var(--color-line)] px-2 py-0.5 text-[10px] text-[var(--color-think)]"
                   >
                     <Paperclip size={10} />
                     <span className="max-w-[14rem] truncate">{a.filename}</span>
                     <span className="text-[var(--color-pass)]">{describeExtraction(a)}</span>
+                    <button
+                      type="button"
+                      title={`Remove ${a.filename}`}
+                      onClick={() => onRemoveAttachment(a.id)}
+                      className="ml-0.5 text-[var(--color-pass)] opacity-0 transition group-hover:opacity-100 focus:opacity-100 hover:text-[var(--color-coral)]"
+                    >
+                      <X size={10} />
+                    </button>
                   </span>
                 ))}
               </span>
@@ -85,10 +107,17 @@ export function RoomHeader({
           >
             <FileText size={14} /> Shared doc
           </button>
-          <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 py-2 text-xs text-[var(--color-think)] hover:bg-white/5">
-            <Paperclip size={14} /> Attach
+          <label
+            className={clsx(
+              'flex items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 py-2 text-xs text-[var(--color-think)]',
+              attaching ? 'cursor-wait opacity-50' : 'cursor-pointer hover:bg-white/5',
+            )}
+          >
+            {attaching ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
+            {attaching ? 'Reading…' : 'Attach'}
             <input
               type="file"
+              disabled={Boolean(attaching)}
               accept=".md,.txt,.csv,.json,.pdf,.docx"
               className="hidden"
               onChange={(ev) => {

@@ -18,6 +18,7 @@ export function useConclaveApp() {
   const [showPause, setShowPause] = useState(false)
   const [direction, setDirection] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [attaching, setAttaching] = useState<string | null>(null)
 
   const refreshLists = useCallback(async () => {
     const [e, c] = await Promise.all([api.listExperts(), api.listConversations()])
@@ -179,13 +180,29 @@ export function useConclaveApp() {
   }
 
   async function onAttach(file: File) {
-    if (!activeId) return
+    if (!activeId || attaching) return
     setError(null)
+    // Scanned PDFs are OCRed before the upload returns — that can take a while,
+    // so show the file as pending rather than leaving the UI silent.
+    setAttaching(file.name)
     try {
       await api.uploadFile(activeId, file)
       await loadConversation(activeId)
     } catch (e) {
-      // Unreadable or unsupported files are rejected server-side — say so.
+      // Unreadable, duplicate, or unsupported files are rejected server-side.
+      setError(String(e).replace(/^Error:\s*/, ''))
+    } finally {
+      setAttaching(null)
+    }
+  }
+
+  async function onRemoveAttachment(attachmentId: string) {
+    if (!activeId) return
+    setError(null)
+    try {
+      await api.deleteAttachment(activeId, attachmentId)
+      await loadConversation(activeId)
+    } catch (e) {
       setError(String(e).replace(/^Error:\s*/, ''))
     }
   }
@@ -211,6 +228,7 @@ export function useConclaveApp() {
     showPause,
     direction,
     error,
+    attaching,
     expertMap,
     roomExperts,
     setShowExpertModal,
@@ -231,6 +249,7 @@ export function useConclaveApp() {
     onRenameConversation,
     onDeleteConversation,
     onAttach,
+    onRemoveAttachment,
     onSaveDoc,
   }
 }
