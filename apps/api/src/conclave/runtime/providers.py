@@ -17,11 +17,15 @@ def build_chat_model(provider: str, model: str, api_key: str) -> BaseChatModel:
 
         return FakeDeliberator(model=model or "fake", delay=settings.fake_turn_delay)
     if provider == "openai":
-        return ChatOpenAI(model=model, api_key=api_key, temperature=0.7)
+        # Responses API + no explicit temperature: newer OpenAI reasoning models
+        # reject sampling params, and gpt-5.6+ rejects function tools on Chat
+        # Completions ("use /v1/responses or set reasoning_effort to 'none'").
+        return ChatOpenAI(model=model, api_key=api_key, use_responses_api=True)
     if provider == "anthropic":
         # Newer Claude models (Opus 4.7+) reject temperature/top_p/top_k with HTTP 400.
         # Omit sampling params so the request stays valid across Anthropic model generations.
-        return ChatAnthropic(model=model, api_key=api_key)
+        # max_tokens: LangChain's default (1024) truncates full proposals mid-write.
+        return ChatAnthropic(model=model, api_key=api_key, max_tokens=16000)
     if provider == "google":
         return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, temperature=0.7)
     raise ValueError(f"Unsupported provider: {provider}")
