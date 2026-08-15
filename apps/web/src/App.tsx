@@ -42,7 +42,7 @@ export default function App() {
               onOpenDoc={() => app.setShowDoc(true)}
               onPause={() => app.setShowPause(true)}
               onStartOrResume={
-                app.active.status === 'paused' || app.active.status === 'safety_pause'
+                ['paused', 'safety_pause', 'error_pause'].includes(app.active.status)
                   ? app.onResume
                   : app.onStart
               }

@@ -53,13 +53,16 @@ async def claim_next(db: AsyncSession, worker_id: str) -> str | None:
     return conv.id
 
 
-async def _release(conversation_id: str, worker_id: str) -> None:
+async def _release(conversation_id: str, worker_id: str, defer_seconds: int = 0) -> None:
+    """Release the claim. With defer_seconds, leave a short future lease instead:
+    the room stays unclaimable for that long (error backoff)."""
+    until = _now() + timedelta(seconds=defer_seconds) if defer_seconds > 0 else None
     try:
         async with SessionLocal() as db:
             await db.execute(
                 update(Conversation)
                 .where(Conversation.id == conversation_id, Conversation.claimed_by == worker_id)
-                .values(claimed_until=None, claimed_by=None)
+                .values(claimed_until=until, claimed_by=None)
             )
             await db.commit()
     except Exception:  # noqa: BLE001 — releasing a deleted room is fine
@@ -96,6 +99,7 @@ def _error_outcome(exc: Exception) -> TurnOutcome:
 
 async def run_one_turn(conversation_id: str, worker_id: str) -> None:
     heartbeat = asyncio.create_task(_heartbeat(conversation_id, worker_id))
+    errored = False
     try:
         async with SessionLocal() as db:
             conv = await db.get(Conversation, conversation_id)
@@ -130,6 +134,7 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 )
             except Exception as exc:  # noqa: BLE001 — provider/tool errors become a pass
                 log.warning("turn failed in %s: %s", conversation_id, exc)
+                errored = True
                 outcome = _error_outcome(exc)
 
             act = outcome.act
@@ -214,6 +219,28 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 elif conv.lap >= settings.safety_lap_ceiling:
                     conv.status = "safety_pause"
 
+            if errored and conv.status == "running":
+                # A persistently failing room (dead key, provider outage) must not
+                # burn laps to the safety ceiling: pause it after N straight errors.
+                await db.flush()
+                recent = (
+                    await db.scalars(
+                        select(Message.thought)
+                        .where(Message.conversation_id == conv.id)
+                        .order_by(Message.created_at.desc(), Message.id.desc())
+                        .limit(settings.max_consecutive_error_turns)
+                    )
+                ).all()
+                if len(recent) >= settings.max_consecutive_error_turns and all(
+                    t.startswith("Error during turn:") for t in recent
+                ):
+                    conv.status = "error_pause"
+                    log.warning(
+                        "pausing %s after %s consecutive error turns",
+                        conv.id,
+                        settings.max_consecutive_error_turns,
+                    )
+
             try:
                 await db.commit()
             except IntegrityError:
@@ -223,7 +250,11 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 log.info("turn slot collision in %s lap=%s chair=%s", conv.id, conv.lap, idx)
     finally:
         heartbeat.cancel()
-        await _release(conversation_id, worker_id)
+        await _release(
+            conversation_id,
+            worker_id,
+            defer_seconds=settings.error_backoff_seconds if errored else 0,
+        )
 
 
 async def runner_loop(worker_id: str | None = None) -> None:

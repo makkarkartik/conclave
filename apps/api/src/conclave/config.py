@@ -21,6 +21,10 @@ class Settings(BaseSettings):
 
     runner_concurrency: int = 8
     lease_seconds: int = 90
+    # A room whose turns error must not race the lap counter: back off between
+    # error turns, and pause the room after this many consecutive errors.
+    error_backoff_seconds: int = 20
+    max_consecutive_error_turns: int = 6
     turn_window: int = 12  # last K verbatim turns in an expert's context
     max_tool_iterations: int = 6
     gist_ledger_chars: int = 6000

@@ -172,6 +172,9 @@ async def resume(conversation_id: str, body: PauseBody, db: AsyncSession = Depen
     if body.direction:
         conv.user_direction = body.direction
     conv.status = "running"
+    # Clear any leftover lease (incl. error backoff) so resume takes effect now
+    conv.claimed_until = None
+    conv.claimed_by = None
     await db.commit()
     return conversation_out(conv)
 
