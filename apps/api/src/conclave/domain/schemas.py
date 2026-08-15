@@ -6,7 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-Provider = Literal["openai", "anthropic", "google"]
+# "fake" is E2E-only: accepted by the API but rejected at model-build time unless
+# CONCLAVE_ENABLE_FAKE_PROVIDER=1. The UI never offers it.
+Provider = Literal["openai", "anthropic", "google", "fake"]
 
 
 class ExpertCreate(BaseModel):

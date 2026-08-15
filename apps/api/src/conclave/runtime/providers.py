@@ -8,6 +8,14 @@ from langchain_openai import ChatOpenAI
 
 def build_chat_model(provider: str, model: str, api_key: str) -> BaseChatModel:
     provider = provider.lower()
+    if provider == "fake":
+        from conclave.config import settings
+
+        if not settings.enable_fake_provider:
+            raise ValueError("Fake provider disabled (set CONCLAVE_ENABLE_FAKE_PROVIDER=1)")
+        from conclave.runtime.fake import FakeDeliberator
+
+        return FakeDeliberator(model=model or "fake", delay=settings.fake_turn_delay)
     if provider == "openai":
         return ChatOpenAI(model=model, api_key=api_key, temperature=0.7)
     if provider == "anthropic":

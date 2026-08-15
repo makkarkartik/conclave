@@ -66,7 +66,16 @@ npm run dev
 ```powershell
 cd apps\api
 python -m pytest -q            # includes a full-room integration test against Postgres
+
+cd apps\web
+npm run test:e2e               # Playwright: drives the real UI in Chromium
 ```
+
+E2E needs the dev Postgres running (`docker compose up -d db`); Playwright starts the
+API and Vite itself. Rooms are driven by a deterministic fake LLM provider enabled via
+`CONCLAVE_ENABLE_FAKE_PROVIDER=1` (test-only; never offered in the UI), so a room
+deliberates to real convergence in seconds without API keys. `npm run test:e2e:ui`
+opens the Playwright inspector.
 
 ### Scaling out (later)
 

@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     data: Path = ROOT / "data"
     embed_runner: bool = True
 
+    # E2E/testing only: enables the deterministic "fake" provider (never shown in the UI).
+    enable_fake_provider: bool = False
+    fake_turn_delay: float = 0.4
+
     runner_concurrency: int = 8
     lease_seconds: int = 90
     turn_window: int = 12  # last K verbatim turns in an expert's context
