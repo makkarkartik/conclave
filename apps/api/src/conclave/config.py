@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     data: Path = ROOT / "data"
     embed_runner: bool = True
 
+    # Redact structured PII (emails/phones/SSNs/cards/IPs) from attachment text
+    # before it can reach any model. Regex tier only — names need an NER tier.
+    redact_pii: bool = True
+
     # E2E/testing only: enables the deterministic "fake" provider (never shown in the UI).
     enable_fake_provider: bool = False
     fake_turn_delay: float = 0.4

@@ -3,7 +3,9 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from conclave.config import settings
 from conclave.db.session import DATA_DIR
+from conclave.domain.redact import redact_pii
 
 ALLOWED_SUFFIXES = {".md", ".txt", ".csv", ".json", ".pdf", ".docx"}
 MAX_READ_CHARS = 12_000
@@ -137,6 +139,8 @@ def read_attachment_text(path: str) -> str:
             text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return ""
+    if settings.redact_pii:
+        text = redact_pii(text)
     if len(text) > MAX_READ_CHARS:
         return text[:MAX_READ_CHARS] + "\n…[truncated]"
     return text
