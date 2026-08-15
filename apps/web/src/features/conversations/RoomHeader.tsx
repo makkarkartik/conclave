@@ -70,6 +70,7 @@ export function RoomHeader({
             <Paperclip size={14} /> Attach
             <input
               type="file"
+              accept=".md,.txt,.csv,.json,.pdf,.docx"
               className="hidden"
               onChange={(ev) => {
                 const f = ev.target.files?.[0]
