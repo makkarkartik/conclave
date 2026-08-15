@@ -90,6 +90,8 @@ class MessageOut(BaseModel):
 class AttachmentOut(BaseModel):
     id: str
     filename: str
+    extracted_chars: int = 0
+    extraction_method: str = ""
     created_at: datetime
 
 

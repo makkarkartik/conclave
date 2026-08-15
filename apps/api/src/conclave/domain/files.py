@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 from conclave.config import settings
@@ -88,7 +89,8 @@ def _ocr_pdf_text(p: Path) -> str:
         return ""
 
 
-def _extract_pdf_text(p: Path) -> str:
+def _extract_pdf_text(p: Path) -> tuple[str, str]:
+    """Returns (text, method) where method is pdf-text | pdf-ocr | empty | failed."""
     try:
         from pypdf import PdfReader
 
@@ -101,16 +103,17 @@ def _extract_pdf_text(p: Path) -> str:
             pages.append(page.extract_text() or "")
         text = "\n\n".join(pages).strip()
         if text:
-            return text
+            return text, "pdf-text"
         ocr_text = _ocr_pdf_text(p)
         if ocr_text:
-            return "[OCR — may contain recognition errors]\n" + ocr_text
-        return "[PDF contains no extractable text — likely a scanned image]"
+            return "[OCR — may contain recognition errors]\n" + ocr_text, "pdf-ocr"
+        return "[PDF contains no extractable text — likely a scanned image]", "empty"
     except Exception:  # noqa: BLE001 — malformed uploads must not break a turn
-        return "[PDF could not be parsed]"
+        return "[PDF could not be parsed]", "failed"
 
 
-def _extract_docx_text(p: Path) -> str:
+def _extract_docx_text(p: Path) -> tuple[str, str]:
+    """Returns (text, method) where method is docx | empty | failed."""
     try:
         import docx
 
@@ -120,27 +123,49 @@ def _extract_docx_text(p: Path) -> str:
             for row in table.rows:
                 parts.append(" | ".join(cell.text.strip() for cell in row.cells))
         text = "\n".join(parts).strip()
-        return text or "[Word document contains no extractable text]"
+        if text:
+            return text, "docx"
+        return "[Word document contains no extractable text]", "empty"
     except Exception:  # noqa: BLE001 — malformed uploads must not break a turn
-        return "[Word document could not be parsed]"
+        return "[Word document could not be parsed]", "failed"
 
 
-def read_attachment_text(path: str) -> str:
+@dataclass
+class Extraction:
+    """What a turn would actually see for an attachment, plus how it was obtained."""
+
+    text: str
+    method: str  # text | pdf-text | pdf-ocr | docx | empty | failed | missing
+    chars: int
+
+    @property
+    def usable(self) -> bool:
+        return self.method not in ("empty", "failed", "missing") and self.chars > 0
+
+
+def extract_attachment(path: str) -> Extraction:
     p = Path(path)
     if not p.exists():
-        return ""
+        return Extraction("", "missing", 0)
     suffix = p.suffix.lower()
     if suffix == ".pdf":
-        text = _extract_pdf_text(p)
+        text, method = _extract_pdf_text(p)
     elif suffix == ".docx":
-        text = _extract_docx_text(p)
+        text, method = _extract_docx_text(p)
     else:
         try:
-            text = p.read_text(encoding="utf-8", errors="replace")
+            text, method = p.read_text(encoding="utf-8", errors="replace"), "text"
         except OSError:
-            return ""
+            return Extraction("", "failed", 0)
+        if not text.strip():
+            method = "empty"
     if settings.redact_pii:
         text = redact_pii(text)
     if len(text) > MAX_READ_CHARS:
-        return text[:MAX_READ_CHARS] + "\n…[truncated]"
-    return text
+        text = text[:MAX_READ_CHARS] + "\n…[truncated]"
+    return Extraction(text, method, len(text))
+
+
+def read_attachment_text(path: str) -> str:
+    """Turn-facing read: the text an expert sees."""
+    return extract_attachment(path).text

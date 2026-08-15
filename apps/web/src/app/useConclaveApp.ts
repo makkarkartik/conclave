@@ -180,8 +180,14 @@ export function useConclaveApp() {
 
   async function onAttach(file: File) {
     if (!activeId) return
-    await api.uploadFile(activeId, file)
-    await loadConversation(activeId)
+    setError(null)
+    try {
+      await api.uploadFile(activeId, file)
+      await loadConversation(activeId)
+    } catch (e) {
+      // Unreadable or unsupported files are rejected server-side — say so.
+      setError(String(e).replace(/^Error:\s*/, ''))
+    }
   }
 
   async function onSaveDoc(content: string) {

@@ -170,6 +170,10 @@ class Attachment(Base):
     )
     filename: Mapped[str] = mapped_column(String(260))
     path: Mapped[str] = mapped_column(Text)
+    # Extraction result, recorded at upload so the room's view of a file is
+    # verifiable before any turn runs.
+    extracted_chars: Mapped[int] = mapped_column(Integer, default=0)
+    extraction_method: Mapped[str] = mapped_column(String(20), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     conversation: Mapped[Conversation] = relationship(back_populates="attachments")

@@ -23,13 +23,24 @@ async def get_db():
         yield db
 
 
+# Additive columns on tables that already exist. create_all() only creates missing
+# tables, never alters existing ones, and there is no Alembic yet — when this list
+# outgrows a handful, that is the signal to adopt real migrations.
+_ADDITIVE_COLUMNS = (
+    "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS extracted_chars INTEGER DEFAULT 0",
+    "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS extraction_method VARCHAR(20) DEFAULT ''",
+)
+
+
 async def init_db() -> None:
-    from sqlalchemy import select
+    from sqlalchemy import select, text
 
     from conclave.db import models
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        for ddl in _ADDITIVE_COLUMNS:
+            await conn.execute(text(ddl))
     (DATA_DIR / "conversations").mkdir(parents=True, exist_ok=True)
 
     async with SessionLocal() as db:

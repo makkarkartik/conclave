@@ -1,7 +1,17 @@
 import { FileText, Paperclip, Pause, Play } from 'lucide-react'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
-import type { Conversation, Expert } from '../../shared/lib/api'
+import type { Attachment, Conversation, Expert } from '../../shared/lib/api'
+
+/** What the room can actually read from a file: size, and how it was extracted. */
+function describeExtraction(a: Attachment): string {
+  if (!a.extraction_method) return 'not analyzed'
+  const chars =
+    a.extracted_chars >= 1000
+      ? `${(a.extracted_chars / 1000).toFixed(1)}k chars`
+      : `${a.extracted_chars} chars`
+  return a.extraction_method === 'pdf-ocr' ? `${chars} · OCR` : chars
+}
 
 export function RoomHeader({
   active,
@@ -51,9 +61,18 @@ export function RoomHeader({
               {active.lap > 0 ? ` · lap ${active.lap}` : ''}
             </span>
             {active.attachments.length > 0 && (
-              <span className="flex items-center gap-1 text-xs text-[var(--color-think)]">
-                <Paperclip size={12} />
-                {active.attachments.length}
+              <span className="flex flex-wrap items-center gap-1.5">
+                {active.attachments.map((a) => (
+                  <span
+                    key={a.id}
+                    title={`${a.filename} — ${describeExtraction(a)} available to the room`}
+                    className="flex items-center gap-1 rounded-full border border-[var(--color-line)] px-2 py-0.5 text-[10px] text-[var(--color-think)]"
+                  >
+                    <Paperclip size={10} />
+                    <span className="max-w-[14rem] truncate">{a.filename}</span>
+                    <span className="text-[var(--color-pass)]">{describeExtraction(a)}</span>
+                  </span>
+                ))}
               </span>
             )}
           </div>

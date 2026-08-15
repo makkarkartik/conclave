@@ -36,6 +36,8 @@ export type Message = {
 export type Attachment = {
   id: string
   filename: string
+  extracted_chars: number
+  extraction_method: string
   created_at: string
 }
 
@@ -71,12 +73,21 @@ export type ConversationUpdates = {
 
 const BASE = '/api'
 
+/** FastAPI errors come back as {"detail": "..."} — surface the message, not the JSON. */
+async function errorMessage(res: Response): Promise<string> {
+  const text = await res.text()
+  try {
+    const parsed = JSON.parse(text)
+    if (typeof parsed?.detail === 'string') return parsed.detail
+  } catch {
+    /* not JSON — fall through to the raw body */
+  }
+  return text || res.statusText
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init)
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || res.statusText)
-  }
+  if (!res.ok) throw new Error(await errorMessage(res))
   return res.json()
 }
 
@@ -141,8 +152,13 @@ export const api = {
     const fd = new FormData()
     fd.append('file', file)
     const res = await fetch(`${BASE}/conversations/${id}/files`, { method: 'POST', body: fd })
-    if (!res.ok) throw new Error(await res.text())
-    return res.json() as Promise<{ id: string; filename: string }>
+    if (!res.ok) throw new Error(await errorMessage(res))
+    return res.json() as Promise<{
+      id: string
+      filename: string
+      extracted_chars: number
+      extraction_method: string
+    }>
   },
   putSharedDoc: (id: string, content: string) =>
     req<{ content: string }>(`/conversations/${id}/shared-doc`, {

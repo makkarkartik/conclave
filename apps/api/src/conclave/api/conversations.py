@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -14,6 +16,7 @@ from conclave.db.session import get_db
 from conclave.domain.files import (
     ALLOWED_SUFFIXES,
     conversation_dir,
+    extract_attachment,
     read_shared_doc,
     remove_conversation_dir,
     write_shared_doc,
@@ -28,6 +31,7 @@ from conclave.domain.schemas import (
 )
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
+log = logging.getLogger("conclave.api")
 
 _FULL = (selectinload(Conversation.messages), selectinload(Conversation.attachments))
 
@@ -194,16 +198,42 @@ async def upload_file(
     dest = dest_dir / f"{new_id()}_{name}"
     data = await file.read()
     dest.write_bytes(data)
+
+    # Parse now, not at turn time: an unreadable file must fail here, loudly,
+    # instead of surfacing mid-deliberation inside a model's context.
+    extraction = await asyncio.to_thread(extract_attachment, str(dest))
+    log.info(
+        "attachment %s: chars=%s method=%s", name, extraction.chars, extraction.method
+    )
+    if not extraction.usable:
+        dest.unlink(missing_ok=True)
+        reasons = {
+            "empty": "no readable text could be extracted (a scanned image with no OCR result, or an empty file)",
+            "failed": "the file could not be parsed — it may be corrupt, encrypted, or not really a "
+            f"{suffix} file",
+            "missing": "the upload could not be read back from disk",
+        }
+        raise HTTPException(
+            400, f"'{name}' was not attached: {reasons.get(extraction.method, 'unreadable')}."
+        )
+
     att = Attachment(
         id=new_id(),
         tenant_id=conv.tenant_id,
         conversation_id=conversation_id,
         filename=name,
         path=str(dest),
+        extracted_chars=extraction.chars,
+        extraction_method=extraction.method,
     )
     db.add(att)
     await db.commit()
-    return {"id": att.id, "filename": att.filename}
+    return {
+        "id": att.id,
+        "filename": att.filename,
+        "extracted_chars": att.extracted_chars,
+        "extraction_method": att.extraction_method,
+    }
 
 
 @router.get("/{conversation_id}/shared-doc")

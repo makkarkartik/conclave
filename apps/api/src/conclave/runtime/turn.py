@@ -102,6 +102,10 @@ class ToolProvider(Protocol):
         """Run the named tool; return its result text, or None if the tool isn't ours."""
         ...
 
+    # Optional: a human-readable chip for the message bubble. Providers that
+    # don't implement it fall back to "Used <tool>".
+    def chip(self, name: str, args: dict[str, Any]) -> str | None: ...
+
 
 class read_attachment(BaseModel):
     """Read an attached file's text content into your context for this turn."""
@@ -115,6 +119,10 @@ class AttachmentTools:
 
     def tools(self) -> list[type[BaseModel]]:
         return [read_attachment] if self._by_id else []
+
+    def chip(self, name: str, args: dict[str, Any]) -> str | None:
+        att = self._by_id.get(str(args.get("file_id", "")))
+        return f"Read {att.filename}" if att else None
 
     async def execute(self, name: str, args: dict[str, Any]) -> str | None:
         if name != "read_attachment":
@@ -219,14 +227,18 @@ async def run_expert_turn(
 
         for call in calls:
             result: str | None = None
+            provider_used: ToolProvider | None = None
             for p in providers:
                 result = await p.execute(call["name"], call["args"] or {})
                 if result is not None:
+                    provider_used = p
                     break
             if result is None:
                 result = f"Unknown tool: {call['name']}"
             else:
-                chips.append(f"Used {call['name']}")
+                labeler = getattr(provider_used, "chip", None)
+                label = labeler(call["name"], call["args"] or {}) if labeler else None
+                chips.append(label or f"Used {call['name']}")
             messages.append(ToolMessage(content=result[:8000], tool_call_id=call["id"]))
 
     return TurnOutcome(

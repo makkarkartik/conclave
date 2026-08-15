@@ -45,7 +45,13 @@ def message_out(m: Message) -> MessageOut:
 
 
 def attachment_out(a: Attachment) -> AttachmentOut:
-    return AttachmentOut(id=a.id, filename=a.filename, created_at=a.created_at)
+    return AttachmentOut(
+        id=a.id,
+        filename=a.filename,
+        extracted_chars=a.extracted_chars,
+        extraction_method=a.extraction_method,
+        created_at=a.created_at,
+    )
 
 
 def speaking_expert_id(c: Conversation) -> str | None:
