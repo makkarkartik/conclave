@@ -8,6 +8,20 @@ from conclave.db.session import DATA_DIR
 ALLOWED_SUFFIXES = {".md", ".txt", ".csv", ".json", ".pdf", ".docx"}
 MAX_READ_CHARS = 12_000
 MAX_PDF_PAGES = 50
+# OCR is CPU-bound (~1-3s/page): cap pages so one scan can't stall a turn for minutes.
+MAX_OCR_PAGES = 10
+
+_ocr_engine = None
+
+
+def _get_ocr():
+    """Lazy singleton: RapidOCR loads its ONNX models once per process."""
+    global _ocr_engine
+    if _ocr_engine is None:
+        from rapidocr_onnxruntime import RapidOCR
+
+        _ocr_engine = RapidOCR()
+    return _ocr_engine
 
 
 def conversation_dir(conversation_id: str) -> Path:
@@ -47,6 +61,31 @@ def edit_shared_doc(conversation_id: str, mode: str, content: str) -> str:
     return write_shared_doc(conversation_id, current.rstrip() + "\n\n" + content.strip() + "\n")
 
 
+def _ocr_pdf_text(p: Path) -> str:
+    """OCR an image-only PDF locally (RapidOCR — nothing leaves the machine)."""
+    try:
+        import numpy as np
+        import pypdfium2 as pdfium
+
+        ocr = _get_ocr()
+        pdf = pdfium.PdfDocument(str(p))
+        try:
+            pages: list[str] = []
+            for i in range(len(pdf)):
+                if i >= MAX_OCR_PAGES:
+                    pages.append(f"…[{len(pdf) - MAX_OCR_PAGES} more pages not OCRed]")
+                    break
+                bitmap = pdf[i].render(scale=2.0)  # ~144 dpi: decent recognition, sane speed
+                result, _ = ocr(np.array(bitmap.to_pil()))
+                if result:
+                    pages.append("\n".join(item[1] for item in result))
+            return "\n\n".join(pages).strip()
+        finally:
+            pdf.close()
+    except Exception:  # noqa: BLE001 — OCR failure degrades to the no-text note
+        return ""
+
+
 def _extract_pdf_text(p: Path) -> str:
     try:
         from pypdf import PdfReader
@@ -59,7 +98,12 @@ def _extract_pdf_text(p: Path) -> str:
                 break
             pages.append(page.extract_text() or "")
         text = "\n\n".join(pages).strip()
-        return text or "[PDF contains no extractable text — likely a scanned image]"
+        if text:
+            return text
+        ocr_text = _ocr_pdf_text(p)
+        if ocr_text:
+            return "[OCR — may contain recognition errors]\n" + ocr_text
+        return "[PDF contains no extractable text — likely a scanned image]"
     except Exception:  # noqa: BLE001 — malformed uploads must not break a turn
         return "[PDF could not be parsed]"
 

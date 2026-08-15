@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -121,7 +122,9 @@ class AttachmentTools:
         att = self._by_id.get(str(args.get("file_id", "")))
         if not att:
             return "No attachment with that id. Available: " + ", ".join(self._by_id)
-        return f"[{att.filename}]\n{read_attachment_text(att.path)}"
+        # Off the event loop: PDF OCR can take seconds and must not stall other rooms.
+        text = await asyncio.to_thread(read_attachment_text, att.path)
+        return f"[{att.filename}]\n{text}"
 
 
 @dataclass

@@ -67,6 +67,24 @@ def test_docx_paragraphs_and_tables_are_extracted(tmp_path: Path):
     assert "metric | threshold" in text
 
 
+def test_image_only_pdf_falls_back_to_ocr(tmp_path: Path):
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = Image.new("RGB", (900, 300), "white")
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.load_default(size=64)
+    except TypeError:  # older Pillow: no size kwarg
+        font = ImageFont.load_default()
+    draw.text((40, 100), "CONCLAVE OCR 42", fill="black", font=font)
+    pdf = tmp_path / "scan.pdf"
+    img.save(str(pdf))  # image-only PDF: no text layer
+
+    text = read_attachment_text(str(pdf))
+    assert text.startswith("[OCR")
+    assert "conclave" in text.lower() or "42" in text
+
+
 def test_text_passthrough_and_cap(tmp_path: Path):
     f = tmp_path / "notes.md"
     f.write_text("x" * (MAX_READ_CHARS + 500), encoding="utf-8")
