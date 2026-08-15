@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronDown, FileDiff } from 'lucide-react'
+import { ChevronDown, FileDiff, Globe } from 'lucide-react'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
 import type { Expert, Message } from '../../shared/lib/api'
@@ -105,6 +105,29 @@ export function MessageBubble({
           {message.content}
         </div>
         {message.doc_diff?.trim() ? <DiffBlock diff={message.doc_diff} /> : null}
+        {message.citations?.length > 0 && (
+          <div className="mt-3 border-t border-[var(--color-line)] pt-2">
+            <div className="mb-1 flex items-center gap-1.5 text-[10px] text-[var(--color-pass)]">
+              <Globe size={11} /> Sources
+            </div>
+            <ol className="space-y-0.5">
+              {message.citations.map((c, i) => (
+                <li key={c.url} className="flex gap-1.5 text-[11px] leading-relaxed">
+                  <span className="text-[var(--color-pass)]">{i + 1}.</span>
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 truncate text-[var(--color-sky)] hover:underline"
+                    title={c.url}
+                  >
+                    {c.title}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
         {message.chips?.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {message.chips.map((c) => (

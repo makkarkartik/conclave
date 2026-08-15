@@ -341,6 +341,36 @@ body {
   margin-bottom: 2rem;
 }
 
+.print-sources {
+  margin-top: 2.6rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--color-line);
+}
+
+.print-source-list {
+  margin: 0.8em 0 0;
+  padding-left: 1.25rem;
+  max-width: 42em;
+  font-size: 0.85rem;
+}
+
+.print-source-list li {
+  margin: 0 0 0.5em;
+  break-inside: avoid;
+}
+
+.print-source-list a {
+  color: var(--color-sky);
+  text-decoration: none;
+}
+
+.print-source-url {
+  display: block;
+  font-size: 0.85em;
+  color: var(--color-pass);
+  word-break: break-all;
+}
+
 .print-trail {
   margin-top: 2.6rem;
   padding-top: 1.2rem;

@@ -6,6 +6,30 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
 
+def native_search_tool(provider: str) -> dict | None:
+    """The provider's own server-side web search, declared rather than executed.
+
+    All three providers run search on their infrastructure and return results
+    (with citations) inline, so there is no client-side loop to write — this is
+    a tool declaration, not a tool implementation.
+    """
+    from conclave.config import settings
+
+    provider = provider.lower()
+    if provider == "anthropic":
+        return {
+            "type": "web_search_20260209",
+            "name": "web_search",
+            "max_uses": settings.web_search_max_uses,
+        }
+    if provider == "openai":
+        # Responses API built-in tool (we already use that endpoint for gpt-5.6+).
+        return {"type": "web_search"}
+    if provider == "google":
+        return {"google_search": {}}
+    return None
+
+
 def build_chat_model(provider: str, model: str, api_key: str) -> BaseChatModel:
     provider = provider.lower()
     if provider == "fake":

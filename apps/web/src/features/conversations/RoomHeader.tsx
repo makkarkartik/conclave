@@ -1,4 +1,4 @@
-import { FileText, Loader2, Paperclip, Pause, Play, X } from 'lucide-react'
+import { FileText, Globe, Loader2, Paperclip, Pause, Play, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
 import type { Attachment, Conversation, Expert } from '../../shared/lib/api'
@@ -21,6 +21,7 @@ export function RoomHeader({
   onAttach,
   attaching,
   onRemoveAttachment,
+  onToggleWebSearch,
   onOpenDoc,
   onPause,
   onStartOrResume,
@@ -32,6 +33,7 @@ export function RoomHeader({
   onAttach: (file: File) => void
   attaching: string | null
   onRemoveAttachment: (attachmentId: string) => void
+  onToggleWebSearch: () => void
   onOpenDoc: () => void
   onPause: () => void
   onStartOrResume: () => void
@@ -100,6 +102,23 @@ export function RoomHeader({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleWebSearch}
+            title={
+              active.web_search
+                ? 'Experts can search the web. Click to disable.'
+                : 'Let experts search the web for evidence (searches are billed by your provider)'
+            }
+            className={clsx(
+              'flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition',
+              active.web_search
+                ? 'border-[var(--color-sky)]/40 bg-[rgba(107,163,255,0.12)] text-[var(--color-sky)]'
+                : 'border-[var(--color-line)] text-[var(--color-think)] hover:bg-white/5',
+            )}
+          >
+            <Globe size={14} /> Web search
+          </button>
           <button
             type="button"
             onClick={onOpenDoc}

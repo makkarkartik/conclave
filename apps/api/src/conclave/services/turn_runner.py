@@ -131,6 +131,7 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                     user_direction=conv.user_direction,
                     lap=conv.lap,
                     context=context,
+                    web_search=conv.web_search,
                 )
             except Exception as exc:  # noqa: BLE001 — provider/tool errors become a pass
                 log.warning("turn failed in %s: %s", conversation_id, exc)
@@ -190,6 +191,7 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 doc_diff=doc_diff,
             )
             msg.chips = chips
+            msg.citations = outcome.citations
             db.add(msg)
             conv.chair_index = (idx + 1) % len(chairs)
 

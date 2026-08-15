@@ -41,6 +41,7 @@ export default function App() {
               onAttach={app.onAttach}
               attaching={app.attaching}
               onRemoveAttachment={app.onRemoveAttachment}
+              onToggleWebSearch={app.onToggleWebSearch}
               onOpenDoc={() => app.setShowDoc(true)}
               onPause={() => app.setShowPause(true)}
               onStartOrResume={

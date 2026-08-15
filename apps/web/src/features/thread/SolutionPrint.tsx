@@ -67,6 +67,14 @@ export function SolutionPrint({
   }, new Map())
   const revisions = messages.filter((m) => m.doc_diff?.trim()).length
 
+  // Every source any expert consulted, in first-cited order — a deliberation
+  // grounded in evidence should ship its evidence.
+  const sources = [
+    ...new Map(
+      messages.flatMap((m) => m.citations ?? []).map((c) => [c.url, c]),
+    ).values(),
+  ]
+
   return createPortal(
     <div className="print-only" id="solution-print">
       <header className="print-head">
@@ -97,6 +105,20 @@ export function SolutionPrint({
       <div className="solution-md">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
       </div>
+
+      {sources.length > 0 && (
+        <section className="print-sources">
+          <h2 className="print-trail-title">Sources consulted</h2>
+          <ol className="print-source-list">
+            {sources.map((s) => (
+              <li key={s.url}>
+                <a href={s.url}>{s.title}</a>
+                <span className="print-source-url">{s.url}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {laps.size > 0 && (
         <section className="print-trail">

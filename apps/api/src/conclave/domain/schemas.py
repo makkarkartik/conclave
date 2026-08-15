@@ -69,6 +69,10 @@ class ConversationUpdate(BaseModel):
     title: str | None = None
     chair_ids: list[str] | None = None
     user_direction: str | None = None
+    web_search: bool | None = None
+    # Acknowledge that enabling search on a room holding documents sends queries
+    # derived from them off the machine.
+    confirm_egress: bool = False
 
 
 class MessageOut(BaseModel):
@@ -83,6 +87,7 @@ class MessageOut(BaseModel):
     gist: str
     action: str
     chips: list[str]
+    citations: list[dict] = Field(default_factory=list)
     doc_diff: str = ""
     created_at: datetime
 
@@ -108,6 +113,7 @@ class ConversationOut(BaseModel):
     lap: int
     chair_index: int
     doc_rev: int
+    web_search: bool = False
     created_at: datetime
     updated_at: datetime
     messages: list[MessageOut] = Field(default_factory=list)

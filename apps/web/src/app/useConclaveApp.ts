@@ -196,6 +196,30 @@ export function useConclaveApp() {
     }
   }
 
+  async function onToggleWebSearch() {
+    if (!activeId || !active) return
+    setError(null)
+    const next = !active.web_search
+    try {
+      setActive(await api.updateConversation(activeId, { web_search: next }))
+    } catch (e) {
+      const message = String(e).replace(/^Error:\s*/, '')
+      // Enabling search on a room holding documents needs explicit acknowledgement.
+      if (next && message.includes('Confirm to proceed') && window.confirm(message)) {
+        try {
+          setActive(
+            await api.updateConversation(activeId, { web_search: true, confirm_egress: true }),
+          )
+          return
+        } catch (inner) {
+          setError(String(inner).replace(/^Error:\s*/, ''))
+          return
+        }
+      }
+      setError(message)
+    }
+  }
+
   async function onRemoveAttachment(attachmentId: string) {
     if (!activeId) return
     setError(null)
@@ -250,6 +274,7 @@ export function useConclaveApp() {
     onDeleteConversation,
     onAttach,
     onRemoveAttachment,
+    onToggleWebSearch,
     onSaveDoc,
   }
 }

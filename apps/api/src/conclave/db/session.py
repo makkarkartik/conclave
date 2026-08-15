@@ -29,6 +29,8 @@ async def get_db():
 _ADDITIVE_COLUMNS = (
     "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS extracted_chars INTEGER DEFAULT 0",
     "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS extraction_method VARCHAR(20) DEFAULT ''",
+    "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS web_search BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE messages ADD COLUMN IF NOT EXISTS citations_json TEXT DEFAULT '[]'",
 )
 
 

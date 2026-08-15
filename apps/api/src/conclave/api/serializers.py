@@ -39,6 +39,7 @@ def message_out(m: Message) -> MessageOut:
         gist=m.gist,
         action=m.action,
         chips=m.chips,
+        citations=m.citations,
         doc_diff=m.doc_diff or "",
         created_at=m.created_at,
     )
@@ -76,6 +77,7 @@ def conversation_out(c: Conversation, include_messages: bool = True) -> Conversa
         lap=c.lap,
         chair_index=c.chair_index,
         doc_rev=c.doc_rev,
+        web_search=c.web_search,
         created_at=c.created_at,
         updated_at=c.updated_at,
         messages=[message_out(m) for m in c.messages] if include_messages else [],

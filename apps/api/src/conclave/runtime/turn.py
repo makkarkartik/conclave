@@ -11,7 +11,8 @@ from conclave.config import settings
 from conclave.db.models import Attachment
 from conclave.domain.files import read_attachment_text
 from conclave.domain.schemas import TurnAct
-from conclave.runtime.providers import build_chat_model
+from conclave.runtime.citations import extract_citations, used_web_search
+from conclave.runtime.providers import build_chat_model, native_search_tool
 from conclave.services.context import TurnContext
 
 SYSTEM = """You are {name}, a seated expert in a Conclave think tank.
@@ -139,6 +140,7 @@ class AttachmentTools:
 class TurnOutcome:
     act: TurnAct
     tool_chips: list[str] = field(default_factory=list)
+    citations: list[dict] = field(default_factory=list)
 
 
 def _text_of(message: AIMessage) -> str:
@@ -161,6 +163,7 @@ async def run_expert_turn(
     user_direction: str,
     lap: int,
     context: TurnContext,
+    web_search: bool = False,
     tool_providers: list[ToolProvider] | None = None,
     llm: Any | None = None,
 ) -> TurnOutcome:
@@ -172,9 +175,15 @@ async def run_expert_turn(
     if llm is None:
         llm = build_chat_model(provider, model, api_key)
 
-    tool_schemas: list[type[BaseModel]] = [TurnAct]
+    tool_schemas: list[Any] = [TurnAct]
     for p in providers:
         tool_schemas.extend(p.tools())
+    if web_search:
+        native = native_search_tool(provider)
+        if native:
+            # Server-side: the provider searches and returns results inline, so
+            # this never enters the tool loop below.
+            tool_schemas.append(native)
     bound = llm.bind_tools(tool_schemas)
 
     direction = (user_direction or "").strip()
@@ -201,23 +210,44 @@ async def run_expert_turn(
 
     messages: list[BaseMessage] = [SystemMessage(content=system), HumanMessage(content=prompt)]
     chips: list[str] = []
+    citations: list[dict] = []
     nudged = False
+
+    searched = False
+
+    def note_sources(response: AIMessage) -> None:
+        nonlocal searched
+        found = extract_citations(response.content)
+        seen = {c["url"] for c in citations}
+        fresh = [c for c in found if c["url"] not in seen]
+        # A search can run without yielding an extractable URL; say so either way.
+        if (fresh or used_web_search(response.content)) and not searched:
+            searched = True
+            chips.append("Searched the web")
+        citations.extend(fresh)
 
     for _ in range(settings.max_tool_iterations):
         response: AIMessage = await bound.ainvoke(messages)
         messages.append(response)
+        note_sources(response)
         calls = list(getattr(response, "tool_calls", None) or [])
 
         submit = next((c for c in calls if c["name"] == "TurnAct"), None)
         if submit is not None:
-            return TurnOutcome(act=TurnAct.model_validate(submit["args"]), tool_chips=chips)
+            return TurnOutcome(
+                act=TurnAct.model_validate(submit["args"]),
+                tool_chips=chips,
+                citations=citations,
+            )
 
         if not calls:
             text = _text_of(response)
             if text:
                 # Model answered in prose instead of calling TurnAct — treat as speak.
                 return TurnOutcome(
-                    act=TurnAct(action="speak", message=text, gist=""), tool_chips=chips
+                    act=TurnAct(action="speak", message=text, gist=""),
+                    tool_chips=chips,
+                    citations=citations,
                 )
             if nudged:
                 break
@@ -246,4 +276,5 @@ async def run_expert_turn(
     return TurnOutcome(
         act=TurnAct(action="forfeit", message="", thought="Hit the tool budget without submitting."),
         tool_chips=chips,
+        citations=citations,
     )

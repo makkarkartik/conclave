@@ -29,8 +29,14 @@ export type Message = {
   gist: string
   action: string
   chips: string[]
+  citations: Citation[]
   doc_diff?: string
   created_at: string
+}
+
+export type Citation = {
+  url: string
+  title: string
 }
 
 export type Attachment = {
@@ -54,6 +60,7 @@ export type Conversation = {
   lap: number
   chair_index: number
   doc_rev: number
+  web_search: boolean
   created_at: string
   updated_at: string
   messages: Message[]

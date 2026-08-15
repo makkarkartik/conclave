@@ -91,6 +91,7 @@ class Conversation(Base):
     lap: Mapped[int] = mapped_column(Integer, default=0)
     chair_index: Mapped[int] = mapped_column(Integer, default=0)
     doc_rev: Mapped[int] = mapped_column(Integer, default=0)
+    web_search: Mapped[bool] = mapped_column(Boolean, default=False)
     claimed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     claimed_by: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
@@ -145,6 +146,7 @@ class Message(Base):
     agree: Mapped[bool] = mapped_column(Boolean, default=False)
     proposal_hash: Mapped[str] = mapped_column(String(64), default="")
     chips_json: Mapped[str] = mapped_column(Text, default="[]")
+    citations_json: Mapped[str] = mapped_column(Text, default="[]")
     doc_diff: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
@@ -157,6 +159,14 @@ class Message(Base):
     @chips.setter
     def chips(self, value: list[str]) -> None:
         self.chips_json = json.dumps(value)
+
+    @property
+    def citations(self) -> list[dict]:
+        return json.loads(self.citations_json or "[]")
+
+    @citations.setter
+    def citations(self, value: list[dict]) -> None:
+        self.citations_json = json.dumps(value)
 
 
 class Attachment(Base):

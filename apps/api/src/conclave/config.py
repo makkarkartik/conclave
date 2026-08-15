@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # before it can reach any model. Regex tier only — names need an NER tier.
     redact_pii: bool = True
 
+    # Provider-native web search runs server-side; searches are billed per query,
+    # so rooms opt in. Queries leave the machine, hence the attachment guard in
+    # the API layer.
+    web_search_max_uses: int = 5
+
     # E2E/testing only: enables the deterministic "fake" provider (never shown in the UI).
     enable_fake_provider: bool = False
     fake_turn_delay: float = 0.4

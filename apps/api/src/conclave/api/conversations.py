@@ -122,6 +122,17 @@ async def update_conversation(
     structural = {k for k in ("topic", "chair_ids", "user_direction") if k in data}
     if conv.status == "running" and structural:
         raise HTTPException(400, "Pause the room before editing topic or seats")
+
+    # Redaction protects what enters a prompt; a search query leaves the machine
+    # entirely, so a room holding documents must opt in with eyes open.
+    confirmed = bool(data.pop("confirm_egress", False))
+    if data.get("web_search") and conv.attachments and not confirmed:
+        raise HTTPException(
+            400,
+            f"This room has {len(conv.attachments)} attached document(s). Enabling web search "
+            "lets experts send queries derived from them to a search provider. "
+            "Confirm to proceed.",
+        )
     if "title" in data and data["title"] is not None:
         title = data["title"].strip()
         if not title:
