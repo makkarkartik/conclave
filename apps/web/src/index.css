@@ -169,3 +169,109 @@ body {
 .solution-md--peek {
   mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
 }
+
+/* ---- PDF export -------------------------------------------------------
+   Printing reuses the app's own stylesheet, so the exported PDF carries the
+   same palette and type as the solution card instead of approximating it. */
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  /* Keep the dark palette in the PDF — browsers drop backgrounds otherwise. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto;
+    background: var(--color-ink);
+  }
+
+  /* Print the solution only, not the app chrome around it. */
+  body * {
+    visibility: hidden;
+  }
+
+  .print-only,
+  .print-only * {
+    visibility: visible;
+  }
+
+  .print-only {
+    display: block;
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 0;
+    background: var(--color-ink);
+    color: var(--color-speak);
+    font-family: var(--font-body);
+  }
+
+  .print-head {
+    border-bottom: 1px solid var(--color-line);
+    padding-bottom: 0.9rem;
+    margin-bottom: 1.4rem;
+  }
+
+  .print-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--color-sky);
+  }
+
+  .print-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 999px;
+    background: var(--color-sky);
+    color: var(--color-ink);
+    font-size: 0.75rem;
+  }
+
+  .print-topic {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0.65rem 0 0.4rem;
+  }
+
+  .print-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--color-think);
+  }
+
+  /* Keep structures whole across page breaks. */
+  .solution-md h1,
+  .solution-md h2,
+  .solution-md h3 {
+    break-after: avoid;
+  }
+
+  .solution-md pre,
+  .solution-md table,
+  .solution-md blockquote,
+  .solution-md li {
+    break-inside: avoid;
+  }
+}

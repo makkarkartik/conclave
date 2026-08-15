@@ -1,49 +1,90 @@
 import { useState } from 'react'
-import { ChevronDown, Sparkles } from 'lucide-react'
+import { ChevronDown, Download, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import clsx from 'clsx'
-import type { Conversation } from '../../shared/lib/api'
+import { SolutionPrint } from './SolutionPrint'
+import type { Conversation, Expert } from '../../shared/lib/api'
 
-export function SolutionCard({ active }: { active: Conversation }) {
+/** Filenames the OS will accept, derived from the room topic. */
+function pdfName(topic: string): string {
+  const slug = topic.trim().slice(0, 60).replace(/[^\w\s-]/g, '').replace(/\s+/g, '-')
+  return `Conclave-${slug || 'converged-solution'}`
+}
+
+export function SolutionCard({
+  active,
+  roomExperts,
+}: {
+  active: Conversation
+  roomExperts: Expert[]
+}) {
   const [expanded, setExpanded] = useState(false)
   const text = (active.converged_solution || '').trim()
+
+  // The browser's own print-to-PDF renders the app's stylesheet, so the export
+  // matches this card exactly. Document title becomes the suggested filename.
+  function exportPdf() {
+    const previous = document.title
+    document.title = pdfName(active.topic)
+    const restore = () => {
+      document.title = previous
+      window.removeEventListener('afterprint', restore)
+    }
+    window.addEventListener('afterprint', restore)
+    window.print()
+  }
 
   // Only show after true room convergence — not pause / draft / in-progress proposal.
   if (active.status !== 'converged' || !text) return null
 
   return (
     <div className="border-t border-[var(--color-line)] px-6 py-4 md:px-8">
+      <SolutionPrint active={active} roomExperts={roomExperts} />
       <motion.div
         layout
         className="overflow-hidden rounded-2xl border border-[var(--color-sky)]/35 bg-[linear-gradient(160deg,rgba(107,163,255,0.14),rgba(28,31,42,0.92)_45%)]"
       >
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-white/[0.03]"
-          aria-expanded={expanded}
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(107,163,255,0.18)] text-[var(--color-sky)]">
-            <Sparkles size={18} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="font-[family-name:var(--font-display)] text-sm font-semibold tracking-tight text-[var(--color-sky)]">
-              Converged solution
+        <div className="flex w-full items-center gap-3 px-4 py-3.5">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex min-w-0 flex-1 items-center gap-3 text-left transition hover:opacity-90"
+            aria-expanded={expanded}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(107,163,255,0.18)] text-[var(--color-sky)]">
+              <Sparkles size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="font-[family-name:var(--font-display)] text-sm font-semibold tracking-tight text-[var(--color-sky)]">
+                Converged solution
+              </div>
+              <div className="truncate text-xs text-[var(--color-think)]">
+                {expanded ? 'Click to collapse' : 'Click to expand · markdown'}
+              </div>
             </div>
-            <div className="truncate text-xs text-[var(--color-think)]">
-              {expanded ? 'Click to collapse' : 'Click to expand · markdown'}
-            </div>
-          </div>
-          <ChevronDown
-            size={18}
-            className={clsx(
-              'shrink-0 text-[var(--color-think)] transition-transform duration-300',
-              expanded && 'rotate-180',
-            )}
-          />
-        </button>
+          </button>
+          <button
+            type="button"
+            onClick={exportPdf}
+            title="Export this solution as a PDF"
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--color-sky)]/35 px-3 py-1.5 text-xs text-[var(--color-sky)] transition hover:bg-[rgba(107,163,255,0.12)]"
+          >
+            <Download size={13} /> PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-label={expanded ? 'Collapse solution' : 'Expand solution'}
+            className="shrink-0 text-[var(--color-think)] transition hover:text-white"
+          >
+            <ChevronDown
+              size={18}
+              className={clsx('transition-transform duration-300', expanded && 'rotate-180')}
+            />
+          </button>
+        </div>
 
         <AnimatePresence initial={false}>
           {expanded ? (
