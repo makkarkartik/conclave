@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import clsx from 'clsx'
 import { SolutionPrint } from './SolutionPrint'
-import type { Conversation, Expert } from '../../shared/lib/api'
+import type { Conversation, Expert, Message } from '../../shared/lib/api'
 
 /** Filenames the OS will accept, derived from the room topic. */
 function pdfName(topic: string): string {
@@ -16,9 +16,11 @@ function pdfName(topic: string): string {
 export function SolutionCard({
   active,
   roomExperts,
+  messages,
 }: {
   active: Conversation
   roomExperts: Expert[]
+  messages: Message[]
 }) {
   const [expanded, setExpanded] = useState(false)
   const text = (active.converged_solution || '').trim()
@@ -41,7 +43,7 @@ export function SolutionCard({
 
   return (
     <div className="border-t border-[var(--color-line)] px-6 py-4 md:px-8">
-      <SolutionPrint active={active} roomExperts={roomExperts} />
+      <SolutionPrint active={active} roomExperts={roomExperts} messages={messages} />
       <motion.div
         layout
         className="overflow-hidden rounded-2xl border border-[var(--color-sky)]/35 bg-[linear-gradient(160deg,rgba(107,163,255,0.14),rgba(28,31,42,0.92)_45%)]"

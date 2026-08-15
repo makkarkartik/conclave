@@ -171,22 +171,21 @@ body {
 }
 
 /* ---- PDF export -------------------------------------------------------
-   Printing reuses the app's own stylesheet, so the exported PDF carries the
-   same palette and type as the solution card instead of approximating it. */
+   A document, not a screenshot of the app: the same type (Sora/Manrope) and the
+   same sky accent, set on paper. Light ground, because a 16-page dark report is
+   heavy to read and heavier to print; the accent carries the identity instead. */
 
 .print-only {
   display: none;
 }
 
 @media print {
-  /* Zero page margin: the dark ground then runs edge to edge as on screen, and
-     the browser has no margin box in which to draw its date/URL/page headers.
-     Page padding is applied inside the document instead. */
+  /* Zero page margin: the browser has no margin box in which to draw its
+     date/URL/page headers. Page padding is applied inside the document. */
   @page {
     margin: 0;
   }
 
-  /* Keep the dark palette in the PDF — browsers drop backgrounds otherwise. */
   * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
@@ -195,7 +194,7 @@ body {
   html,
   body {
     height: auto;
-    background: var(--color-ink);
+    background: #fff;
   }
 
   /* display:none, not visibility:hidden — a hidden app still occupies its full
@@ -205,23 +204,114 @@ body {
   }
 
   .print-only {
+    --paper: #fff;
+    --paper-ink: #14161c;
+    --paper-muted: #5c6472;
+    --paper-accent: #2f6ad0;
+    --paper-rule: #e3e7ee;
+    --paper-tint: #f6f8fc;
+
     display: block;
-    background: var(--color-ink);
-    color: var(--color-speak);
+    background: var(--paper);
+    color: var(--paper-ink);
     font-family: var(--font-body);
-    padding: 15mm 16mm 16mm;
-    /* Slightly larger than screen: a page is read at arm's length, not at
-       monitor distance. */
     font-size: 15.5px;
+    line-height: 1.6;
+    padding: 16mm 17mm 18mm;
   }
+
+  /* Masthead */
+
+  .print-brand {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.72em;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--paper-accent);
+  }
+
+  .print-topic {
+    font-family: var(--font-display);
+    font-size: 1.62em;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    margin: 0.5em 0 0.35em;
+    max-width: 30em;
+  }
+
+  .print-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15em 1.1em;
+    font-size: 0.78em;
+    color: var(--paper-muted);
+  }
+
+  .print-panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4em 1.4em;
+    margin-top: 0.9em;
+    padding: 0.7em 0;
+    border-top: 1px solid var(--paper-rule);
+    border-bottom: 1px solid var(--paper-rule);
+    font-size: 0.78em;
+  }
+
+  .print-expert {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4em;
+  }
+
+  .print-model {
+    color: var(--paper-muted);
+  }
+
+  .print-dot {
+    width: 0.45em;
+    height: 0.45em;
+    border-radius: 999px;
+    display: inline-block;
+    flex: none;
+  }
+
+  /* The room topic is the instruction the experts were given, not the title —
+     it belongs here, at reference size. */
+  .print-brief {
+    max-width: 34em;
+    margin: 1em 0 0;
+    font-size: 0.78em;
+    line-height: 1.55;
+    color: var(--paper-muted);
+  }
+
+  .print-brief-label {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 0.85em;
+    color: var(--paper-accent);
+    margin-right: 0.7em;
+  }
+
+  .print-head {
+    margin-bottom: 2em;
+  }
+
+  /* The solution, re-set for paper */
 
   .print-only .solution-md {
     font-size: 1em;
+    color: var(--paper-ink);
   }
 
   /* A full-bleed A4 measure runs ~92 characters per line, which reads as dense
-     and cheap. Constrain prose to a comfortable measure; let tables and code
-     blocks keep the full width, where they need it. */
+     and cheap. `ch` is the width of a digit — wide in Manrope — so constrain
+     prose in em: ~68 characters. Tables and code keep the full width. */
   .print-only .solution-md > p,
   .print-only .solution-md > ul,
   .print-only .solution-md > ol,
@@ -230,29 +320,83 @@ body {
   .print-only .solution-md > h2,
   .print-only .solution-md > h3,
   .print-only .solution-md > h4 {
-    /* ~68 characters per line. `ch` is the width of a digit, which in Manrope is
-       wide enough that a ch-based measure barely constrains anything. */
     max-width: 34em;
   }
 
-  /* Firmer hierarchy on paper than on screen. */
-  .print-only .solution-md h1 {
-    font-size: 1.5em;
-  }
-  .print-only .solution-md h2 {
-    font-size: 1.22em;
-    margin-top: 1.35em;
-  }
-  .print-only .solution-md h3 {
-    font-size: 1.06em;
+  .print-only .solution-md h1,
+  .print-only .solution-md h2,
+  .print-only .solution-md h3,
+  .print-only .solution-md h4 {
+    color: var(--paper-ink);
   }
 
+  .print-only .solution-md h1 {
+    font-size: 1.4em;
+  }
+
+  .print-only .solution-md h2 {
+    font-size: 1.18em;
+    color: var(--paper-accent);
+    margin-top: 1.5em;
+  }
+
+  .print-only .solution-md h3 {
+    font-size: 1.04em;
+  }
+
+  .print-only .solution-md strong {
+    color: var(--paper-ink);
+  }
+
+  .print-only .solution-md em {
+    color: var(--paper-muted);
+  }
+
+  .print-only .solution-md a {
+    color: var(--paper-accent);
+  }
+
+  .print-only .solution-md li::marker {
+    color: var(--paper-accent);
+  }
+
+  .print-only .solution-md blockquote {
+    border-left: 2px solid var(--paper-accent);
+    color: var(--paper-muted);
+  }
+
+  .print-only .solution-md hr {
+    border-top: 1px solid var(--paper-rule);
+  }
+
+  .print-only .solution-md code {
+    background: var(--paper-tint);
+    border: 1px solid var(--paper-rule);
+    color: var(--paper-ink);
+  }
+
+  .print-only .solution-md pre {
+    background: var(--paper-tint);
+    border: 1px solid var(--paper-rule);
+  }
+
+  /* Tables: hairline rules, tinted header, full column width */
   .print-only .solution-md table {
     font-size: 0.82em;
   }
 
-  /* Let long tables flow across pages with their header repeated, instead of
-     being pushed whole onto the next page and leaving half a page blank. */
+  .print-only .solution-md th,
+  .print-only .solution-md td {
+    border: 1px solid var(--paper-rule);
+  }
+
+  .print-only .solution-md th {
+    background: var(--paper-tint);
+    color: var(--paper-accent);
+  }
+
+  /* Long tables flow across pages with the header repeated, rather than being
+     pushed whole to the next page and leaving half a page blank. */
   .print-only .solution-md thead {
     display: table-header-group;
   }
@@ -263,68 +407,95 @@ body {
     break-inside: avoid;
   }
 
-  .print-only .solution-md p,
-  .print-only .solution-md li {
-    orphans: 2;
-    widows: 2;
+  /* Deliberation trail */
+
+  .print-trail {
+    margin-top: 2.4em;
+    padding-top: 1.2em;
+    border-top: 1px solid var(--paper-rule);
+    break-before: page;
   }
 
-  .print-head {
-    border-bottom: 1px solid var(--color-line);
-    padding-bottom: 0.9rem;
-    margin-bottom: 1.4rem;
-  }
-
-  .print-brand {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  .print-trail-title {
     font-family: var(--font-display);
+    font-size: 1.18em;
     font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--color-sky);
+    color: var(--paper-accent);
+    margin: 0 0 0.4em;
   }
 
-  .print-mark {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.35rem;
-    height: 1.35rem;
-    border-radius: 999px;
-    background: var(--color-sky);
-    color: var(--color-ink);
-    font-size: 0.75rem;
+  .print-trail-intro {
+    max-width: 34em;
+    margin: 0 0 1.4em;
+    font-size: 0.88em;
+    color: var(--paper-muted);
   }
 
-  .print-topic {
+  .print-lap {
+    display: grid;
+    grid-template-columns: 5.5em 1fr;
+    gap: 0.9em;
+    padding: 0.7em 0;
+    border-top: 1px solid var(--paper-rule);
+    break-inside: avoid;
+  }
+
+  .print-lap-label {
     font-family: var(--font-display);
-    font-size: 1.5em;
+    font-size: 0.78em;
     font-weight: 600;
-    line-height: 1.25;
-    letter-spacing: -0.02em;
-    margin: 0.6em 0 0.45em;
-    max-width: 62ch;
+    color: var(--paper-muted);
+    padding-top: 0.15em;
   }
 
-  .print-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    font-size: 0.72rem;
-    color: var(--color-think);
+  .print-turns {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-width: 40em;
   }
 
-  /* Keep structures whole across page breaks. */
-  .solution-md h1,
-  .solution-md h2,
-  .solution-md h3 {
+  .print-turns li {
+    display: block;
+    margin: 0 0 0.45em;
+    font-size: 0.86em;
+    line-height: 1.5;
+    break-inside: avoid;
+  }
+
+  .print-turns li:last-child {
+    margin-bottom: 0;
+  }
+
+  .print-turn-who {
+    font-weight: 600;
+  }
+
+  .print-turn-act {
+    color: var(--paper-accent);
+    font-size: 0.92em;
+  }
+
+  .print-turn-gist {
+    color: var(--paper-muted);
+  }
+
+  .print-only .solution-md h1,
+  .print-only .solution-md h2,
+  .print-only .solution-md h3 {
     break-after: avoid;
   }
 
-  .solution-md pre,
-  .solution-md blockquote,
-  .solution-md li {
+  .print-only .solution-md pre,
+  .print-only .solution-md blockquote,
+  .print-only .solution-md li {
     break-inside: avoid;
   }
+
+  .print-only p,
+  .print-only li {
+    orphans: 2;
+    widows: 2;
+  }
 }
+

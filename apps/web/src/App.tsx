@@ -56,7 +56,11 @@ export default function App() {
               thinkingId={app.thinkingId}
               running={app.active.status === 'running'}
             />
-            <SolutionCard active={app.active} roomExperts={app.roomExperts} />
+            <SolutionCard
+              active={app.active}
+              roomExperts={app.roomExperts}
+              messages={app.messages}
+            />
           </>
         )}
       </main>

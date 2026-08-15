@@ -36,7 +36,11 @@ test('converged solution exports to a styled PDF', async ({ page, request }) => 
   await page.emulateMedia({ media: 'print' })
   await expect(printRoot).toBeVisible()
   const bg = await printRoot.evaluate((el) => getComputedStyle(el).backgroundColor)
-  expect(bg).toBe('rgb(18, 20, 26)') // --color-ink
+  expect(bg).toBe('rgb(255, 255, 255)') // paper
+
+  // The deliberation trail must carry every turn of the room.
+  const trailTurns = await page.locator('#solution-print .print-turns li').count()
+  expect(trailTurns).toBeGreaterThan(0)
 
   // The app must contribute no layout height, or its hidden bulk becomes
   // trailing blank pages in the PDF.
