@@ -209,7 +209,64 @@ body {
     background: var(--color-ink);
     color: var(--color-speak);
     font-family: var(--font-body);
-    padding: 14mm 15mm;
+    padding: 15mm 16mm 16mm;
+    /* Slightly larger than screen: a page is read at arm's length, not at
+       monitor distance. */
+    font-size: 15.5px;
+  }
+
+  .print-only .solution-md {
+    font-size: 1em;
+  }
+
+  /* A full-bleed A4 measure runs ~92 characters per line, which reads as dense
+     and cheap. Constrain prose to a comfortable measure; let tables and code
+     blocks keep the full width, where they need it. */
+  .print-only .solution-md > p,
+  .print-only .solution-md > ul,
+  .print-only .solution-md > ol,
+  .print-only .solution-md > blockquote,
+  .print-only .solution-md > h1,
+  .print-only .solution-md > h2,
+  .print-only .solution-md > h3,
+  .print-only .solution-md > h4 {
+    /* ~68 characters per line. `ch` is the width of a digit, which in Manrope is
+       wide enough that a ch-based measure barely constrains anything. */
+    max-width: 34em;
+  }
+
+  /* Firmer hierarchy on paper than on screen. */
+  .print-only .solution-md h1 {
+    font-size: 1.5em;
+  }
+  .print-only .solution-md h2 {
+    font-size: 1.22em;
+    margin-top: 1.35em;
+  }
+  .print-only .solution-md h3 {
+    font-size: 1.06em;
+  }
+
+  .print-only .solution-md table {
+    font-size: 0.82em;
+  }
+
+  /* Let long tables flow across pages with their header repeated, instead of
+     being pushed whole onto the next page and leaving half a page blank. */
+  .print-only .solution-md thead {
+    display: table-header-group;
+  }
+
+  .print-only .solution-md tr,
+  .print-only .solution-md th,
+  .print-only .solution-md td {
+    break-inside: avoid;
+  }
+
+  .print-only .solution-md p,
+  .print-only .solution-md li {
+    orphans: 2;
+    widows: 2;
   }
 
   .print-head {
@@ -242,10 +299,12 @@ body {
 
   .print-topic {
     font-family: var(--font-display);
-    font-size: 1.35rem;
+    font-size: 1.5em;
     font-weight: 600;
+    line-height: 1.25;
     letter-spacing: -0.02em;
-    margin: 0.65rem 0 0.4rem;
+    margin: 0.6em 0 0.45em;
+    max-width: 62ch;
   }
 
   .print-meta {
@@ -264,7 +323,6 @@ body {
   }
 
   .solution-md pre,
-  .solution-md table,
   .solution-md blockquote,
   .solution-md li {
     break-inside: avoid;
