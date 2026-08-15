@@ -15,7 +15,7 @@ const ACTION_LABEL: Record<string, string> = {
  * The solution's own opening H1 is the document's real title; the room topic is
  * usually a brief. Lift the heading out so the page has one title, not two.
  */
-function splitTitle(markdown: string): { title: string | null; body: string } {
+export function splitTitle(markdown: string): { title: string | null; body: string } {
   const match = markdown.match(/^\s*#\s+(.+?)\s*(?:\n|$)/)
   if (!match) return { title: null, body: markdown }
   return { title: match[1], body: markdown.slice(match[0].length).trimStart() }

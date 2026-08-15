@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { ChevronDown, Download, Sparkles } from 'lucide-react'
+import { ChevronDown, Download, Printer, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import clsx from 'clsx'
-import { SolutionPrint } from './SolutionPrint'
+import { SolutionPrint, splitTitle } from './SolutionPrint'
+import { downloadSolutionHtml } from './exportHtml'
 import type { Conversation, Expert, Message } from '../../shared/lib/api'
 
 /** Filenames the OS will accept, derived from the room topic. */
@@ -69,11 +70,24 @@ export function SolutionCard({
           </button>
           <button
             type="button"
-            onClick={exportPdf}
-            title="Export this solution as a PDF"
-            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--color-sky)]/35 px-3 py-1.5 text-xs text-[var(--color-sky)] transition hover:bg-[rgba(107,163,255,0.12)]"
+            onClick={() =>
+              downloadSolutionHtml(
+                pdfName(active.topic),
+                splitTitle(text).title ?? active.title,
+              )
+            }
+            title="Download as a self-contained HTML document"
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--color-sky)]/35 bg-[rgba(107,163,255,0.12)] px-3 py-1.5 text-xs text-[var(--color-sky)] transition hover:bg-[rgba(107,163,255,0.2)]"
           >
-            <Download size={13} /> PDF
+            <Download size={13} /> HTML
+          </button>
+          <button
+            type="button"
+            onClick={exportPdf}
+            title="Print this solution to PDF"
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 py-1.5 text-xs text-[var(--color-think)] transition hover:bg-white/5"
+          >
+            <Printer size={13} /> PDF
           </button>
           <button
             type="button"
