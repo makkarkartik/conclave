@@ -55,35 +55,56 @@ export function buildSolutionHtml(title: string): string | null {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
+/* The app's own tokens — the document is the conclusion section, not a
+   reinterpretation of it. */
 :root {
   --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
   --font-body: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #12141a;
+  --color-ink-2: #1a1d26;
+  --color-panel: #1c1f2a;
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-sky: #6ba3ff;
+  --color-speak: #f2f4f8;
+  --color-think: #9aa3b5;
+  --color-coral: #ff8b6b;
+  --color-pass: #7a8499;
 }
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  background: #eef1f6;
+  padding: 2.5rem 1.25rem 4rem;
+  background: linear-gradient(180deg, #12141a 0%, #1a1d26 100%);
+  background-attachment: fixed;
+  color: var(--color-speak);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
-/* The document sits on a tinted ground like a sheet of paper on a desk. Its
-   width tracks the prose measure plus a modest gutter for tables, so the page
-   does not look like a column stranded on a too-wide sheet. */
+${collectDocumentCss()}
+/* The card the solution lives in, carried over verbatim. */
 #solution-print {
   display: block;
-  max-width: 46rem;
+  max-width: 52rem;
   margin: 0 auto;
-  min-height: 100vh;
-  box-shadow: 0 1px 3px rgba(20, 22, 28, 0.08), 0 12px 32px rgba(20, 22, 28, 0.06);
+  border: 1px solid rgba(107, 163, 255, 0.35);
+  border-radius: 1rem;
+  background: linear-gradient(160deg, rgba(107, 163, 255, 0.14), rgba(28, 31, 42, 0.92) 45%);
 }
-${collectDocumentCss()}
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 8px; }
 @media print {
   @page { margin: 0; }
-  body { background: #fff; }
-  #solution-print { max-width: none; box-shadow: none; min-height: 0; }
+  body { padding: 0; background: var(--color-ink); }
+  #solution-print {
+    max-width: none;
+    border: none;
+    border-radius: 0;
+    background: var(--color-ink);
+  }
 }
 @media (max-width: 40rem) {
-  #solution-print { padding: 7vw 6vw; }
+  body { padding: 0; }
+  #solution-print { border: none; border-radius: 0; padding: 7vw 6vw; }
 }
 </style>
 </head>

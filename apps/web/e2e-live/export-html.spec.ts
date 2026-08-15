@@ -44,8 +44,23 @@ test('converged solution exports as a self-contained HTML document', async ({ pa
   await offline.goto(`file://${path.resolve(file).replace(/\\/g, '/')}`)
   const root = offline.locator('#solution-print')
   await expect(root).toBeVisible()
-  const bg = await root.evaluate((el) => getComputedStyle(el).backgroundColor)
-  expect(bg).toBe('rgb(255, 255, 255)')
+  // The document must carry the app's palette and type, not a print variant.
+  const style = await root.evaluate((el) => {
+    const cs = getComputedStyle(el)
+    const md = el.querySelector('.solution-md') as HTMLElement
+    const h2 = el.querySelector('.solution-md h2') as HTMLElement | null
+    return {
+      color: cs.color,
+      font: cs.fontFamily.split(',')[0].replace(/"/g, ''),
+      bodyFont: getComputedStyle(md).fontFamily.split(',')[0].replace(/"/g, ''),
+      bodySize: getComputedStyle(md).fontSize,
+      h2Color: h2 ? getComputedStyle(h2).color : null,
+    }
+  })
+  expect(style.color).toBe('rgb(242, 244, 248)') // --color-speak
+  expect(style.font).toBe('Manrope')
+  expect(style.bodySize).toBe('14.8px') // identical to the card on screen
+  expect(style.h2Color).toBe('rgb(107, 163, 255)') // --color-sky
   const turns = await offline.locator('.print-turns li').count()
   expect(turns).toBeGreaterThan(0)
   await offline.screenshot({ path: `${OUT}/html-standalone.png`, fullPage: false })
