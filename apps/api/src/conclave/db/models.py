@@ -3,33 +3,63 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from conclave.db.session import Base
+
+# Fixed sentinel tenant until auth lands (schema-first tenancy). UUIDv7-shaped so it
+# sorts like every other id.
+DEFAULT_TENANT_ID = "00000000-0000-7000-8000-000000000001"
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class Expert(Base):
-    __tablename__ = "experts"
+class Tenant(Base):
+    __tablename__ = "tenants"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), default="default")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Expert(Base):
+    __tablename__ = "experts"
+    __table_args__ = (Index("ix_experts_tenant_created", "tenant_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     persona: Mapped[str] = mapped_column(Text, default="")
     provider: Mapped[str] = mapped_column(String(40))
     model: Mapped[str] = mapped_column(String(120))
-    api_key: Mapped[str] = mapped_column(Text)
+    api_key_encrypted: Mapped[str] = mapped_column(Text)
+    api_key_hint: Mapped[str] = mapped_column(String(20), default="")
     accent: Mapped[str] = mapped_column(String(20), default="#6BA3FF")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Conversation(Base):
     __tablename__ = "conversations"
+    __table_args__ = (
+        Index("ix_conversations_tenant_updated", "tenant_id", "updated_at"),
+        # The claim query's index: runnable rooms are (status='running', lease free/expired).
+        Index("ix_conversations_claimable", "status", "claimed_until"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
     title: Mapped[str] = mapped_column(String(240))
     topic: Mapped[str] = mapped_column(Text)
     user_direction: Mapped[str] = mapped_column(Text, default="")
@@ -37,18 +67,25 @@ class Conversation(Base):
     status: Mapped[str] = mapped_column(String(40), default="draft")
     shared_proposal: Mapped[str] = mapped_column(Text, default="")
     converged_solution: Mapped[str] = mapped_column(Text, default="")
+    rolling_summary: Mapped[str] = mapped_column(Text, default="")
     lap: Mapped[int] = mapped_column(Integer, default=0)
     chair_index: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    doc_rev: Mapped[int] = mapped_column(Integer, default=0)
+    claimed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claimed_by: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
 
     messages: Mapped[list[Message]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
-        order_by="Message.created_at",
+        passive_deletes=True,
+        order_by="(Message.created_at, Message.id)",
     )
     attachments: Mapped[list[Attachment]] = relationship(
-        back_populates="conversation", cascade="all, delete-orphan"
+        back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
     )
 
     @property
@@ -62,19 +99,34 @@ class Conversation(Base):
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        # Idempotency: one message per turn slot. A retried turn (dead worker, double
+        # claim) collides here instead of double-posting.
+        UniqueConstraint("conversation_id", "lap", "chair_index", name="uq_messages_turn_slot"),
+        Index("ix_messages_conv_order", "conversation_id", "created_at", "id"),
+        Index("ix_messages_tenant", "tenant_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"))
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"))
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE")
+    )
     expert_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     expert_name: Mapped[str] = mapped_column(String(120), default="System")
     provider: Mapped[str] = mapped_column(String(40), default="")
     model: Mapped[str] = mapped_column(String(120), default="")
+    lap: Mapped[int] = mapped_column(Integer, default=0)
+    chair_index: Mapped[int] = mapped_column(Integer, default=0)
     thought: Mapped[str] = mapped_column(Text, default="")
     content: Mapped[str] = mapped_column(Text, default="")
+    gist: Mapped[str] = mapped_column(Text, default="")
     action: Mapped[str] = mapped_column(String(40), default="speak")
+    agree: Mapped[bool] = mapped_column(Boolean, default=False)
+    proposal_hash: Mapped[str] = mapped_column(String(64), default="")
     chips_json: Mapped[str] = mapped_column(Text, default="[]")
     doc_diff: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
 
@@ -89,11 +141,15 @@ class Message(Base):
 
 class Attachment(Base):
     __tablename__ = "attachments"
+    __table_args__ = (Index("ix_attachments_tenant", "tenant_id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"))
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"))
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE")
+    )
     filename: Mapped[str] = mapped_column(String(260))
     path: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     conversation: Mapped[Conversation] = relationship(back_populates="attachments")

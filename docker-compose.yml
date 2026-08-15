@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: conclave-db
+    environment:
+      POSTGRES_USER: conclave
+      POSTGRES_PASSWORD: conclave
+      POSTGRES_DB: conclave
+    ports:
+      # 5433 on the host: 5432 is taken by other local projects
+      - "5433:5432"
+    volumes:
+      - conclave-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conclave -d conclave"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  conclave-pgdata:
+
+networks:
+  # Explicit subnet: this machine's default Docker address pools are exhausted by
+  # other projects' networks; pinning one avoids pool allocation entirely.
+  default:
+    ipam:
+      config:
+        - subnet: 10.114.23.0/24

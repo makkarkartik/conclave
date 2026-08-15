@@ -1,12 +1,13 @@
 [project]
 name = "conclave-api"
-version = "0.1.0"
+version = "0.2.0"
 description = "Conclave multi-expert deliberation API"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.32.0",
-  "sqlalchemy>=2.0.36",
+  "sqlalchemy[asyncio]>=2.0.36",
+  "psycopg[binary]>=3.2.0",
   "pydantic>=2.10.0",
   "pydantic-settings>=2.6.0",
   "python-multipart>=0.0.17",
@@ -14,8 +15,9 @@ dependencies = [
   "langchain-openai>=0.2.0",
   "langchain-anthropic>=0.3.0",
   "langchain-google-genai>=2.0.0",
-  "langgraph>=0.2.0",
   "httpx>=0.28.0",
+  "cryptography>=43.0.0",
+  "uuid6>=2024.7.10",
 ]
 
 [project.optional-dependencies]

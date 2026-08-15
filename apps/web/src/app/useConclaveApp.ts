@@ -1,11 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  api,
-  subscribeConversation,
-  type Conversation,
-  type Expert,
-  type Message,
-} from '../shared/lib/api'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { api, type Conversation, type Expert, type Message } from '../shared/lib/api'
+
+const POLL_MS = 2000
 
 export function useConclaveApp() {
   const [experts, setExperts] = useState<Expert[]>([])
@@ -29,6 +25,11 @@ export function useConclaveApp() {
     setConversations(c)
   }, [])
 
+  // Poll cursors: last message seen, and the status/doc revision the UI reflects.
+  const lastMsgId = useRef<string | null>(null)
+  const statusRef = useRef<string>('')
+  const docRevRef = useRef<number>(0)
+
   const loadConversation = useCallback(async (id: string) => {
     const c = await api.getConversation(id)
     setActive(c)
@@ -36,6 +37,9 @@ export function useConclaveApp() {
     setMessages(c.messages)
     setSpeakingId(c.speaking_expert_id)
     setDirection(c.user_direction || '')
+    lastMsgId.current = c.messages.length ? c.messages[c.messages.length - 1].id : null
+    statusRef.current = c.status
+    docRevRef.current = c.doc_rev
   }, [])
 
   useEffect(() => {
@@ -44,37 +48,46 @@ export function useConclaveApp() {
 
   useEffect(() => {
     if (!activeId) return
-    return subscribeConversation(activeId, {
-      floor: (d) => {
-        const data = d as { expert_id: string }
-        setSpeakingId(data.expert_id)
-        setThinkingId(null)
-      },
-      thinking: (d) => {
-        const data = d as { expert_id: string }
-        setThinkingId(data.expert_id)
-      },
-      act: (d) => {
-        const msg = d as Message
-        setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
-        setThinkingId(null)
-      },
-      converged: async () => {
-        if (activeId) await loadConversation(activeId)
-        await refreshLists()
-      },
-      paused: async () => {
-        if (activeId) await loadConversation(activeId)
-      },
-      doc_updated: (d) => {
-        const data = d as { content: string }
-        setActive((prev) => (prev ? { ...prev, shared_doc: data.content } : prev))
-      },
-      status: async () => {
-        if (activeId) await loadConversation(activeId)
-      },
-      error: (d) => setError(String((d as { message?: string }).message || d)),
-    })
+    let stopped = false
+    let inFlight = false
+
+    const tick = async () => {
+      if (stopped || inFlight) return
+      inFlight = true
+      try {
+        const u = await api.getUpdates(activeId, lastMsgId.current ?? undefined)
+        if (stopped) return
+        if (u.messages.length) {
+          lastMsgId.current = u.messages[u.messages.length - 1].id
+          setMessages((prev) => {
+            const seen = new Set(prev.map((m) => m.id))
+            const fresh = u.messages.filter((m) => !seen.has(m.id))
+            return fresh.length ? [...prev, ...fresh] : prev
+          })
+        }
+        setSpeakingId(u.speaking_expert_id)
+        setThinkingId(u.status === 'running' ? u.speaking_expert_id : null)
+        const statusChanged = u.status !== statusRef.current
+        const docChanged = u.doc_rev !== docRevRef.current
+        if (statusChanged || docChanged) {
+          statusRef.current = u.status
+          docRevRef.current = u.doc_rev
+          await loadConversation(activeId)
+          if (statusChanged) await refreshLists()
+        }
+      } catch {
+        // Transient poll failures are expected (deploys, sleeping laptop); next tick retries.
+      } finally {
+        inFlight = false
+      }
+    }
+
+    tick()
+    const timer = setInterval(tick, POLL_MS)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
   }, [activeId, loadConversation, refreshLists])
 
   const expertMap = useMemo(() => Object.fromEntries(experts.map((e) => [e.id, e])), [experts])

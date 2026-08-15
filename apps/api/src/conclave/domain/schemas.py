@@ -59,8 +59,10 @@ class MessageOut(BaseModel):
     expert_name: str
     provider: str
     model: str
+    lap: int
     thought: str
     content: str
+    gist: str
     action: str
     chips: list[str]
     doc_diff: str = ""
@@ -82,14 +84,27 @@ class ConversationOut(BaseModel):
     status: str
     shared_proposal: str
     converged_solution: str
+    rolling_summary: str
     lap: int
     chair_index: int
+    doc_rev: int
     created_at: datetime
     updated_at: datetime
     messages: list[MessageOut] = Field(default_factory=list)
     attachments: list[AttachmentOut] = Field(default_factory=list)
     shared_doc: str = ""
     speaking_expert_id: str | None = None
+
+
+class ConversationUpdates(BaseModel):
+    """Polling delta: everything the client needs to catch up since its cursor."""
+
+    status: str
+    lap: int
+    chair_index: int
+    doc_rev: int
+    speaking_expert_id: str | None
+    messages: list[MessageOut] = Field(default_factory=list)
 
 
 class PauseBody(BaseModel):
@@ -101,11 +116,25 @@ class SharedDocBody(BaseModel):
 
 
 class TurnAct(BaseModel):
-    thought: str = ""
-    action: Literal["speak", "write_proposal", "read_file", "edit_shared_doc", "forfeit"] = "speak"
-    message: str = ""
-    proposal: str | None = None
-    file_id: str | None = None
+    """The one terminal tool of every expert turn: the expert's final act on the floor.
+
+    Reading attachments (and, later, MCP connectors) are ordinary tools used before
+    this call; TurnAct ends the turn.
+    """
+
+    thought: str = Field("", description="Private reasoning; longer than the spoken message is fine")
+    action: Literal["speak", "write_proposal", "edit_shared_doc", "forfeit"] = "speak"
+    message: str = Field("", description="What you say to the room, 2-5 sentences")
+    gist: str = Field(
+        "",
+        description=(
+            "One sentence, max 20 words, third person, summarizing what you did or argued "
+            "this turn. Becomes the room's permanent ledger."
+        ),
+    )
+    proposal: str | None = Field(
+        None, description="write_proposal only: the full shared proposal as GitHub Markdown"
+    )
     doc_edit_mode: Literal["append", "replace"] | None = None
     doc_edit_content: str | None = None
     agree: bool = False

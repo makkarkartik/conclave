@@ -15,8 +15,10 @@ export type Message = {
   expert_name: string
   provider: string
   model: string
+  lap: number
   thought: string
   content: string
+  gist: string
   action: string
   chips: string[]
   doc_diff?: string
@@ -38,14 +40,25 @@ export type Conversation = {
   status: string
   shared_proposal: string
   converged_solution: string
+  rolling_summary: string
   lap: number
   chair_index: number
+  doc_rev: number
   created_at: string
   updated_at: string
   messages: Message[]
   attachments: Attachment[]
   shared_doc: string
   speaking_expert_id: string | null
+}
+
+export type ConversationUpdates = {
+  status: string
+  lap: number
+  chair_index: number
+  doc_rev: number
+  speaking_expert_id: string | null
+  messages: Message[]
 }
 
 const BASE = '/api'
@@ -78,6 +91,10 @@ export const api = {
   testExpert: (id: string) => req<{ ok: boolean; reply: string }>(`/experts/${id}/test`, { method: 'POST' }),
   listConversations: () => req<Conversation[]>('/conversations'),
   getConversation: (id: string) => req<Conversation>(`/conversations/${id}`),
+  getUpdates: (id: string, after?: string) =>
+    req<ConversationUpdates>(
+      `/conversations/${id}/updates${after ? `?after=${encodeURIComponent(after)}` : ''}`,
+    ),
   createConversation: (body: { topic: string; chair_ids: string[]; title?: string }) =>
     req<Conversation>('/conversations', {
       method: 'POST',
@@ -118,22 +135,4 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
     }),
-}
-
-export function subscribeConversation(
-  id: string,
-  handlers: Record<string, (data: unknown) => void>,
-): () => void {
-  const es = new EventSource(`${BASE}/conversations/${id}/events`)
-  const wrap = (event: string) => (e: MessageEvent) => {
-    try {
-      handlers[event]?.(JSON.parse(e.data))
-    } catch {
-      handlers[event]?.(e.data)
-    }
-  }
-  ;['ready', 'floor', 'thinking', 'act', 'converged', 'paused', 'doc_updated', 'status', 'error', 'ping'].forEach(
-    (ev) => es.addEventListener(ev, wrap(ev) as EventListener),
-  )
-  return () => es.close()
 }

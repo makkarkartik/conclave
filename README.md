@@ -1,44 +1,57 @@
 # Conclave
 
-Multi-expert deliberation rooms. Experts take the floor in round-robin, stream thoughts, critique each other, and stay until they converge — or you pause to direct.
+Multi-expert deliberation rooms. Experts take the floor in round-robin, stream thoughts,
+critique each other, and stay until they converge — or you pause to direct.
 
 ![Conclave UI](docs/conclave-ui.png)
 
 ## Stack
 
-- **API:** FastAPI + LangGraph + LangChain + SQLite (`apps/api`)
+- **API:** FastAPI + SQLAlchemy (async) + Postgres (`apps/api`)
 - **Web:** React + Vite + Tailwind + Framer Motion (`apps/web`)
-- **Connectors:** BYOK API keys (OpenAI / Anthropic / Google) — not ChatGPT/Claude chat logins
+- **Connectors:** BYOK API keys (OpenAI / Anthropic / Google), Fernet-encrypted at rest
 
-## Layout (maintainable)
+## Architecture
+
+One stateless app tier, one Postgres, and a turn is a claimable row — see
+[docs/architecture.md](docs/architecture.md). Postgres is the system of record, the job
+queue (`FOR UPDATE SKIP LOCKED`), the pause signal, and the event feed (2s polling).
+Expert turns are bounded tool loops with a `ToolProvider` seam for future MCP connectors.
 
 ```
 apps/api/src/conclave/
-  api/         # HTTP routes + serializers
-  domain/      # schemas, converge, files, mask, diff
-  runtime/     # LangChain providers + ReAct turn
-  services/    # room_runner, event bus, message helpers
-  db/          # SQLAlchemy models + session
+  api/         # HTTP routes + serializers (incl. GET .../updates polling feed)
+  domain/      # schemas, converge fingerprints, files, crypto, mask, diff
+  runtime/     # LangChain providers + tool-loop turn executor
+  services/    # turn_runner (claim/lease/lap), context builder
+  db/          # SQLAlchemy async models + session + UUIDv7 ids
+  serve.py     # API entrypoint        runner.py  # standalone turn-runner
 
 apps/web/src/
-  app/         # useConclaveApp hook
-  features/
-    experts/ | conversations/ | thread/ | files/ | shell/
-  shared/
-    ui/        # Avatar, Modal
-    lib/api.ts # typed REST + SSE client
+  app/         # useConclaveApp hook (polling)
+  features/    # experts/ | conversations/ | thread/ | files/ | shell/
+  shared/      # ui/ + lib/api.ts (typed REST client)
 ```
 
 ## Quick start
+
+### 0. Postgres
+
+```powershell
+docker compose up -d db        # localhost:5433 (5432 is often taken)
+```
 
 ### 1. API
 
 ```powershell
 cd apps\api
 python -m pip install -e ".[dev]"
-$env:PYTHONPATH = (Resolve-Path .\src).Path
-python -m uvicorn conclave.main:app --reload --port 8000
+copy .env.example .env         # defaults match docker-compose
+python -m conclave.serve --reload
 ```
+
+> Use `python -m conclave.serve`, not `python -m uvicorn ...` — it sets the Windows
+> selector event-loop policy psycopg async requires before uvicorn creates its loop.
 
 ### 2. Web
 
@@ -48,32 +61,14 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173
-
-Or use the helper scripts from the repo root:
-
-```powershell
-.\scripts\dev-api.ps1
-.\scripts\dev-web.ps1
-```
-
-## Using Conclave
-
-1. **Add experts** (left sidebar) with a developer API key + model.
-2. **New conversation** — set a topic, seat 2+ experts (order = chair order).
-3. **Start** — round-robin runs until they converge.
-4. **Pause to direct** — inject guidance, attach files, edit the shared doc, then Resume.
-5. Attach `.md` / `.txt` / `.csv` / `.json` files; experts can read them and co-edit the shared document.
-6. When experts update the shared document, the thread shows a **diff** of what changed. The converged solution renders as Markdown.
-
-## Data
-
-Local data lives in `Conclave/data/` (SQLite + per-conversation files). Gitignored — includes API keys.
-
-## Tests
+### Tests
 
 ```powershell
 cd apps\api
-$env:PYTHONPATH = (Resolve-Path .\src).Path
-python -m pytest
+python -m pytest -q            # includes a full-room integration test against Postgres
 ```
+
+### Scaling out (later)
+
+Set `CONCLAVE_EMBED_RUNNER=0` on API processes and run turn-runners separately:
+`python -m conclave.runner`. Any number of either role; Postgres arbitrates.

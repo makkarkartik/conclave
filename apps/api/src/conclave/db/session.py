@@ -1,47 +1,41 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
-ROOT = Path(__file__).resolve().parents[5]  # Conclave/
-DATA_DIR = Path(os.environ.get("CONCLAVE_DATA", ROOT / "data"))
+from conclave.config import settings
+
+DATA_DIR = Path(settings.data)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "conclave.db"
 
-engine = create_engine(
-    f"sqlite:///{DB_PATH}",
-    connect_args={"check_same_thread": False},
-)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+SessionLocal = async_sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):
     pass
 
 
-def get_db():
-    db = SessionLocal()
-    try:
+async def get_db():
+    async with SessionLocal() as db:
         yield db
-    finally:
-        db.close()
 
 
-def init_db() -> None:
-    from sqlalchemy import inspect, text
+async def init_db() -> None:
+    from sqlalchemy import select
 
-    from conclave.db import models  # noqa: F401
+    from conclave.db import models
 
-    Base.metadata.create_all(bind=engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     (DATA_DIR / "conversations").mkdir(parents=True, exist_ok=True)
 
-    # Lightweight SQLite column add for existing DBs (no Alembic yet).
-    insp = inspect(engine)
-    if "messages" in insp.get_table_names():
-        cols = {c["name"] for c in insp.get_columns("messages")}
-        if "doc_diff" not in cols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE messages ADD COLUMN doc_diff TEXT DEFAULT ''"))
+    async with SessionLocal() as db:
+        existing = await db.scalar(
+            select(models.Tenant).where(models.Tenant.id == models.DEFAULT_TENANT_ID)
+        )
+        if existing is None:
+            db.add(models.Tenant(id=models.DEFAULT_TENANT_ID, name="default"))
+            await db.commit()
