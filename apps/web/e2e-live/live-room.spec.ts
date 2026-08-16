@@ -116,7 +116,7 @@ test('live: real models deliberate a real problem through the UI', async ({ page
     await page.screenshot({ path: `${SHOTS_DIR}/99-converged-solution.png`, fullPage: true })
   } else {
     // Still deliberating at the watch cap: pause it politely and capture final state
-    const pauseBtn = page.getByRole('button', { name: 'Pause to direct' })
+    const pauseBtn = page.getByRole('button', { name: 'Pause', exact: true })
     if (await pauseBtn.isVisible().catch(() => false)) {
       await pauseBtn.click()
       await page.getByRole('button', { name: 'Pause only' }).click()

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { Avatar } from '../../shared/ui/Avatar'
 import { MessageBubble } from './MessageBubble'
+import { SealedDrafting } from './SealedDrafting'
 import type { Expert, Message } from '../../shared/lib/api'
 
 /** A lap boundary, marked as a node on the timeline rail. */
@@ -21,12 +22,16 @@ export function Thread({
   speakingId,
   thinkingId,
   running,
+  drafting = false,
+  roomExperts = [],
 }: {
   messages: Message[]
   expertMap: Record<string, Expert>
   speakingId: string | null
   thinkingId: string | null
   running: boolean
+  drafting?: boolean
+  roomExperts?: Expert[]
 }) {
   // The transcript as a chain of events: rows on a single vertical rail, with a
   // lap marker wherever a new lap begins.
@@ -57,6 +62,7 @@ export function Thread({
           />
         )}
         <AnimatePresence initial={false}>{rows}</AnimatePresence>
+        {drafting && roomExperts.length > 0 && <SealedDrafting experts={roomExperts} />}
         {thinkingId && expertMap[thinkingId] && (
           <div className="flex gap-3 opacity-80">
             <div className="relative z-[1] shrink-0">

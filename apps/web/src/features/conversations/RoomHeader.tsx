@@ -113,7 +113,7 @@ export function RoomHeader({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 whitespace-nowrap">
           <button
             type="button"
             onClick={onToggleWebSearch}
@@ -129,14 +129,14 @@ export function RoomHeader({
                 : 'border-[var(--color-line)] text-[var(--color-think)] hover:bg-white/5',
             )}
           >
-            <Globe size={14} /> Web search
+            <Globe size={14} /> Search
           </button>
           <button
             type="button"
             onClick={onOpenDoc}
             className="flex items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 py-2 text-xs text-[var(--color-think)] hover:bg-white/5"
           >
-            <FileText size={14} /> Shared doc
+            <FileText size={14} /> Doc
           </button>
           <button
             type="button"
@@ -182,9 +182,10 @@ export function RoomHeader({
             <button
               type="button"
               onClick={onPause}
+              title="Pause the room — optionally give the experts binding direction before resuming"
               className="flex items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-4 py-2 text-sm font-medium hover:bg-white/5"
             >
-              <Pause size={14} /> Pause to direct
+              <Pause size={14} /> Pause
             </button>
           ) : active.status === 'converged' ? (
             <span className="rounded-xl bg-[rgba(107,163,255,0.15)] px-4 py-2 text-sm text-[var(--color-sky)]">

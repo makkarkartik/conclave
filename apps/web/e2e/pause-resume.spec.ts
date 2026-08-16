@@ -23,7 +23,7 @@ test('pause with direction interrupts the room; resume carries the direction to 
     await page.getByRole('button', { name: 'Start' }).click()
 
     // Pause immediately — long before the 3-lap convergence floor can be reached
-    await page.getByRole('button', { name: 'Pause to direct' }).click()
+    await page.getByRole('button', { name: 'Pause', exact: true }).click()
     await page
       .getByPlaceholder(/Focus on abuse resistance/)
       .fill('Converge now on the current plan.')
