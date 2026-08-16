@@ -146,8 +146,11 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     gist: Mapped[str] = mapped_column(Text, default="")
     action: Mapped[str] = mapped_column(String(40), default="speak")
+    # v2 semantics: consent — True when the turn staked no op and no objection.
     agree: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Legacy (v1 fingerprint votes); kept for old rooms, no longer written.
     proposal_hash: Mapped[str] = mapped_column(String(64), default="")
+    objection_json: Mapped[str] = mapped_column(Text, default="")
     chips_json: Mapped[str] = mapped_column(Text, default="[]")
     citations_json: Mapped[str] = mapped_column(Text, default="[]")
     doc_diff: Mapped[str] = mapped_column(Text, default="")
@@ -170,6 +173,14 @@ class Message(Base):
     @citations.setter
     def citations(self, value: list[dict]) -> None:
         self.citations_json = json.dumps(value)
+
+    @property
+    def objection(self) -> dict | None:
+        return json.loads(self.objection_json) if self.objection_json else None
+
+    @objection.setter
+    def objection(self, value: dict | None) -> None:
+        self.objection_json = json.dumps(value) if value else ""
 
 
 class DocOp(Base):

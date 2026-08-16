@@ -1,6 +1,6 @@
 # Conclave deliberation protocol v2
 
-Status: **decided, not yet implemented** · 2026-08-15
+Status: **phases 1–2 implemented** (2026-08-16); phases 3–5 pending · decided 2026-08-15
 Supersedes the v1 mechanism (whole-document `write_proposal`, unanimous `agree` votes,
 fingerprint-equality convergence). The engine — claim loop, leases, laps, pause,
 follow-ups ([architecture.md](architecture.md)) — is untouched by this redesign.

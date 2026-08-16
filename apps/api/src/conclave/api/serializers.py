@@ -39,6 +39,7 @@ def message_out(m: Message) -> MessageOut:
         gist=m.gist,
         action=m.action,
         agree=m.agree,
+        objection=m.objection,
         chips=m.chips,
         citations=m.citations,
         doc_diff=m.doc_diff or "",

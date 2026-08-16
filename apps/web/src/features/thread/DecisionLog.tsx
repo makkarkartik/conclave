@@ -22,12 +22,12 @@ const STANCE_STYLE: Record<Stance, { dot: string; text: string; label: string }>
   backs: {
     dot: 'bg-[#50c878]',
     text: 'text-[#9ddeb5]',
-    label: 'backs the proposal',
+    label: 'consents',
   },
   objects: {
     dot: 'bg-[var(--color-coral)]',
     text: 'text-[var(--color-coral)]',
-    label: 'still objects',
+    label: 'staked a change',
   },
   passed: {
     dot: 'bg-[var(--color-pass)]',
@@ -218,6 +218,11 @@ export function DecisionLog({
                               {m.gist || (m.action === 'forfeit' ? 'passed' : 'spoke')}
                             </span>
                           </div>
+                          {m.objection && (
+                            <div className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-coral)]">
+                              ⚑ {m.objection.text}
+                            </div>
+                          )}
                           {m.chips.length > 0 && (
                             <div className="mt-1 flex flex-wrap gap-1">
                               {m.chips.map((c) => (

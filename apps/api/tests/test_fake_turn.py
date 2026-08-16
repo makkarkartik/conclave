@@ -31,7 +31,7 @@ async def test_fake_provider_completes_a_turn(monkeypatch):
         context=ctx(),
     )
     assert outcome.act.action == "speak"
-    assert outcome.act.agree is True
+    assert outcome.act.blocking_objection is None
     assert outcome.act.gist
     # The fake seeds an empty document with one section op.
     assert [op.kind for op in outcome.staged_ops] == ["add_section"]

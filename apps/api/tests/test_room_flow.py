@@ -46,7 +46,6 @@ async def _scripted_turn(**kwargs) -> TurnOutcome:
             message="I stress-tested it; the tradeoffs hold.",
             thought="scripted",
             gist=f"{kwargs['name']} endorsed the plan",
-            agree=True,
         ),
         staged_ops=list(doc.staged),
         doc_after=doc.doc_text if doc.staged else None,

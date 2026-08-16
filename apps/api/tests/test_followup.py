@@ -11,7 +11,7 @@ import conclave.services.turn_runner as turn_runner
 from conclave.db.ids import new_id
 from conclave.db.models import DEFAULT_TENANT_ID, Conversation, Expert, Message
 from conclave.db.session import SessionLocal, engine, init_db
-from conclave.domain.schemas import TurnAct
+from conclave.domain.schemas import Objection, TurnAct
 from conclave.runtime.turn import TurnOutcome
 
 SOLUTION = "# Agreed plan\n\nShip the canary."
@@ -35,7 +35,6 @@ async def _answering_turn(**kwargs) -> TurnOutcome:
             action="speak",
             message="The plan already covers that: see the rollout section.",
             gist=f"{kwargs['name']} answered the chair's follow-up",
-            agree=True,
         )
     )
 
@@ -140,18 +139,22 @@ async def test_follow_up_answers_for_one_lap_and_preserves_the_solution(
 
 
 async def test_reopening_requires_convergence_to_be_earned_again(db_or_skip, monkeypatch):
-    async def _disagreeing_turn(**kwargs) -> TurnOutcome:
+    async def _objecting_turn(**kwargs) -> TurnOutcome:
         assert kwargs["consulting"] is False
+        # v2: keeping the room open costs a staked objection, not a free "no".
         return TurnOutcome(
             act=TurnAct(
                 action="speak",
                 message="That changes things.",
-                gist=f"{kwargs['name']} withheld agreement after the new question",
-                agree=False,
+                gist=f"{kwargs['name']} staked an objection after the new question",
+                blocking_objection=Objection(
+                    text="The rollout section does not survive the chair's new constraint",
+                    confidence=0.8,
+                ),
             )
         )
 
-    monkeypatch.setattr(turn_runner, "run_expert_turn", _disagreeing_turn)
+    monkeypatch.setattr(turn_runner, "run_expert_turn", _objecting_turn)
     cid, eids = await _converged_room("reopen")
     try:
         async with SessionLocal() as db:
@@ -165,9 +168,18 @@ async def test_reopening_requires_convergence_to_be_earned_again(db_or_skip, mon
 
         async with SessionLocal() as db:
             conv = await db.get(Conversation, cid)
-            # Experts disagree, so the room stays open rather than snapping back
-            # to converged on the strength of its earlier agreement.
+            # Staked objections hold the room open rather than letting it snap
+            # back to converged on the strength of its earlier agreement.
             assert conv.status == "running"
             assert conv.converged_solution == SOLUTION
+            objections = (
+                await db.scalars(
+                    select(Message).where(
+                        Message.conversation_id == cid, Message.objection_json != ""
+                    )
+                )
+            ).all()
+            assert objections, "the staked objection must be on the permanent record"
+            assert all(not m.agree for m in objections)
     finally:
         await _cleanup(cid, eids)

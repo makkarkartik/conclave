@@ -86,7 +86,9 @@ class MessageOut(BaseModel):
     content: str
     gist: str
     action: str
+    # Consent, not a vote: True when the turn staked nothing (v2 semantics).
     agree: bool = False
+    objection: dict | None = None
     chips: list[str]
     citations: list[dict] = Field(default_factory=list)
     doc_diff: str = ""
@@ -149,6 +151,22 @@ class SharedDocBody(BaseModel):
     content: str
 
 
+class Objection(BaseModel):
+    """A staked blocking objection: the only way besides a document operation to
+    keep the room open (protocol v2, §5). It lands on the permanent record under
+    the expert's name."""
+
+    anchor: str = Field(
+        "", description="Section anchor the objection targets, if it targets one"
+    )
+    text: str = Field(
+        description="What specifically must change and why it is blocking — falsifiable, not vibes"
+    )
+    confidence: float = Field(
+        0.7, ge=0.0, le=1.0, description="How confident you are that this objection is right (0-1)"
+    )
+
+
 class TurnAct(BaseModel):
     """The one terminal tool of every expert turn: the expert's final act on the floor.
 
@@ -156,6 +174,10 @@ class TurnAct(BaseModel):
     delete_section, revert_edit) before this call — they apply immediately and are
     committed with the turn. Reading attachments (and, later, MCP connectors) are
     ordinary tools too. TurnAct ends the turn.
+
+    Consent by silence: a turn that neither operated on the document nor stakes a
+    blocking_objection consents to the document as it stands. The room converges
+    when a full lap passes with no operation and no objection.
     """
 
     thought: str = Field("", description="Private reasoning; longer than the spoken message is fine")
@@ -168,4 +190,11 @@ class TurnAct(BaseModel):
             "this turn. Becomes the room's permanent ledger."
         ),
     )
-    agree: bool = False
+    blocking_objection: Objection | None = Field(
+        None,
+        description=(
+            "Stake this ONLY for a defect that genuinely blocks the document. It keeps the "
+            "room open and is scored on the record. Polish is not blocking — fix it with an "
+            "operation or let it go."
+        ),
+    )

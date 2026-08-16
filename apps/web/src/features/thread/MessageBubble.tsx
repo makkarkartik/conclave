@@ -11,8 +11,8 @@ function StanceBadge({ message }: { message: Message }) {
   const stance =
     message.action === 'forfeit' ? 'passed' : message.agree ? 'backs' : 'objects'
   const style = {
-    backs: { bg: 'bg-[#50c878]', label: 'backs the proposal', Icon: Check },
-    objects: { bg: 'bg-[var(--color-coral)]', label: 'still objects', Icon: X },
+    backs: { bg: 'bg-[#50c878]', label: 'consents to the document', Icon: Check },
+    objects: { bg: 'bg-[var(--color-coral)]', label: 'staked a change', Icon: X },
     passed: { bg: 'bg-[var(--color-pass)]', label: 'passed', Icon: Minus },
   }[stance]
   return (
@@ -154,6 +154,22 @@ export function MessageBubble({
         >
           {message.content}
         </div>
+        {message.objection ? (
+          <div className="mt-3 rounded-xl border border-[var(--color-coral)]/35 bg-[rgba(255,139,107,0.08)] px-3 py-2">
+            <div className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold tracking-wide text-[var(--color-coral)] uppercase">
+              Blocking objection
+              {message.objection.anchor ? (
+                <span className="normal-case">§{message.objection.anchor}</span>
+              ) : null}
+              <span className="ml-auto font-normal">
+                {Math.round(message.objection.confidence * 100)}% sure
+              </span>
+            </div>
+            <div className="text-[12px] leading-relaxed text-[var(--color-speak)]">
+              {message.objection.text}
+            </div>
+          </div>
+        ) : null}
         {message.doc_diff?.trim() ? <DiffBlock diff={message.doc_diff} /> : null}
         {message.citations?.length > 0 && (
           <div className="mt-3 border-t border-[var(--color-line)] pt-2">

@@ -28,7 +28,9 @@ export type Message = {
   content: string
   gist: string
   action: string
+  /** v2 semantics: consent — true when the turn staked no op and no objection */
   agree: boolean
+  objection?: { anchor: string; text: string; confidence: number } | null
   chips: string[]
   citations: Citation[]
   doc_diff?: string

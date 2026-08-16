@@ -32,6 +32,7 @@ _ADDITIVE_COLUMNS = (
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS web_search BOOLEAN DEFAULT FALSE",
     "ALTER TABLE messages ADD COLUMN IF NOT EXISTS citations_json TEXT DEFAULT '[]'",
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS consult_until_lap INTEGER",
+    "ALTER TABLE messages ADD COLUMN IF NOT EXISTS objection_json TEXT DEFAULT ''",
 )
 
 

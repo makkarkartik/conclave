@@ -1,53 +1,40 @@
-from conclave.domain.converge import (
-    lap_converged,
-    normalize_proposal,
-    proposal_fingerprint,
-)
+"""Protocol v2 convergence: a room settles when a full lap stakes nothing."""
+
+from conclave.domain.converge import MIN_LAPS_BEFORE_CONVERGE, lap_settled
 
 
-def turn(agree=True, forfeit=False, proposal="ship plan A"):
-    return {
-        "agree": agree,
-        "forfeit": forfeit,
-        "proposal_hash": "" if forfeit else proposal_fingerprint(proposal),
-    }
+def turn(staked=False, forfeit=False):
+    return {"staked": staked, "forfeit": forfeit}
 
 
-def test_normalize_collapses_whitespace_and_case():
-    assert normalize_proposal("  Ship\n\nPlan   A ") == "ship plan a"
+def test_min_laps_floor():
+    quiet = [turn(), turn()]
+    assert MIN_LAPS_BEFORE_CONVERGE == 3
+    assert not lap_settled(laps_done=2, chair_count=2, turns=quiet)
+    assert lap_settled(laps_done=3, chair_count=2, turns=quiet)
 
 
-def test_fingerprint_stable_across_formatting():
-    assert proposal_fingerprint("Ship Plan A") == proposal_fingerprint("  ship   plan a\n")
-    assert proposal_fingerprint("") == ""
-    assert proposal_fingerprint("x") != proposal_fingerprint("y")
+def test_any_stake_holds_the_room_open():
+    assert not lap_settled(laps_done=5, chair_count=2, turns=[turn(), turn(staked=True)])
 
 
-def test_no_convergence_before_min_laps():
-    turns = [turn(), turn()]
-    assert not lap_converged(laps_done=2, chair_count=2, turns=turns)
-    assert lap_converged(laps_done=3, chair_count=2, turns=turns)
+def test_forfeits_do_not_settle_a_room():
+    # A lap of passes (e.g. consecutive error turns) must not read as consent.
+    all_out = [turn(forfeit=True), turn(forfeit=True)]
+    assert not lap_settled(laps_done=5, chair_count=2, turns=all_out)
 
 
-def test_dissent_blocks_convergence():
-    turns = [turn(), turn(agree=False)]
-    assert not lap_converged(laps_done=5, chair_count=2, turns=turns)
-
-
-def test_differing_proposals_block_convergence():
-    turns = [turn(proposal="plan A"), turn(proposal="plan B")]
-    assert not lap_converged(laps_done=5, chair_count=2, turns=turns)
-
-
-def test_forfeits_do_not_veto_but_quorum_required():
-    # 3 chairs: one forfeit still leaves quorum (chair_count - 1)
+def test_one_forfeit_among_consents_still_settles():
     turns = [turn(), turn(), turn(forfeit=True)]
-    assert lap_converged(laps_done=3, chair_count=3, turns=turns)
-    # two forfeits: below quorum
+    assert lap_settled(laps_done=3, chair_count=3, turns=turns)
+
+
+def test_too_few_active_turns_does_not_settle():
     turns = [turn(), turn(forfeit=True), turn(forfeit=True)]
-    assert not lap_converged(laps_done=3, chair_count=3, turns=turns)
+    assert not lap_settled(laps_done=3, chair_count=3, turns=turns)
 
 
-def test_empty_proposals_never_converge():
-    turns = [turn(proposal=""), turn(proposal="")]
-    assert not lap_converged(laps_done=5, chair_count=2, turns=turns)
+def test_forfeited_stake_is_ignored():
+    # A forfeit row can't stake; only active turns count either way.
+    turns = [turn(), turn(), turn(forfeit=True, staked=True)]
+    assert lap_settled(laps_done=4, chair_count=3, turns=turns)

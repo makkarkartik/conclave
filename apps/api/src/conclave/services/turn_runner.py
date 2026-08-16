@@ -14,7 +14,7 @@ from conclave.config import settings
 from conclave.db.ids import new_id
 from conclave.db.models import Conversation, DocOp, Expert, Message
 from conclave.db.session import SessionLocal
-from conclave.domain.converge import lap_converged, proposal_fingerprint
+from conclave.domain.converge import lap_settled
 from conclave.domain.diff import format_doc_change
 from conclave.domain.files import write_shared_doc
 from conclave.runtime.turn import TurnOutcome, run_expert_turn
@@ -183,7 +183,12 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 content = content or "Updated the shared document."
 
             forfeit = act.action == "forfeit"
-            vote_proposal = outcome.doc_after or conv.shared_proposal
+            objection = act.blocking_objection
+            if objection is not None:
+                target = f" §{objection.anchor}" if objection.anchor else ""
+                chips.append(f"Blocking objection{target}")
+            # v2: a turn that stakes nothing — no op, no objection — consents.
+            staked = bool(staged) or objection is not None
             msg = Message(
                 id=msg_id,
                 tenant_id=conv.tenant_id,
@@ -198,10 +203,10 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 content=content,
                 gist=(act.gist or "")[:300],
                 action=act.action,
-                agree=bool(act.agree) and not forfeit,
-                proposal_hash="" if forfeit else proposal_fingerprint(vote_proposal),
+                agree=not forfeit and not staked,
                 doc_diff=doc_diff,
             )
+            msg.objection = objection.model_dump() if objection is not None else None
             msg.chips = chips
             msg.citations = outcome.citations
             db.add(msg)
@@ -221,11 +226,12 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 fold_lap_into_summary(conv, completed_lap, list(lap_msgs))
                 turns = [
                     {
-                        "agree": m.agree,
                         "forfeit": m.action == "forfeit",
-                        "proposal_hash": m.proposal_hash,
+                        # Consent (agree) is exactly "staked nothing" for non-forfeits.
+                        "staked": m.action != "forfeit" and not m.agree,
                     }
                     for m in lap_msgs
+                    if m.chair_index >= 0  # chair questions never occupy a turn slot
                 ]
                 if consulting:
                     # A follow-up is answered, not re-deliberated: the experts
@@ -237,7 +243,7 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                         # The question was binding direction while it was live; a
                         # stale one must not command every future turn.
                         conv.user_direction = ""
-                elif lap_converged(laps_done=conv.lap, chair_count=len(chairs), turns=turns):
+                elif lap_settled(laps_done=conv.lap, chair_count=len(chairs), turns=turns):
                     conv.status = "converged"
                     conv.converged_solution = conv.shared_proposal
                     conv.user_direction = ""

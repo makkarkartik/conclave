@@ -1,9 +1,9 @@
 """Deterministic fake LLM for E2E tests: drives any room to convergence.
 
 The first expert to see an empty document seeds the plan section (one add_section
-op); everyone after speaks and agrees, so fingerprints match and the room
-converges exactly at the MIN_LAPS floor. A small per-call delay keeps the UI's
-thinking states observable and gives pause/resume tests room to act.
+op); everyone after speaks without staking anything, so the room settles exactly
+at the MIN_LAPS floor. A small per-call delay keeps the UI's thinking states
+observable and gives pause/resume tests room to act.
 """
 
 from __future__ import annotations
@@ -105,7 +105,6 @@ class FakeDeliberator(BaseChatModel):
                         "action": "speak",
                         "message": spoken,
                         "gist": f"{name} endorsed the shared plan",
-                        "agree": True,
                     },
                 }
             ],

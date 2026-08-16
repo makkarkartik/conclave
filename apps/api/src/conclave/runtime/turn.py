@@ -42,7 +42,7 @@ Norms:
   a better alternative is incomplete work.
 - Distinguish blocking issues from polish. Wording nits and speculative infinite regress
   are polish — fold them lightly or drop them.
-- Default stance is disagree. A coherent first draft is not enough to agree.
+- Scrutiny is the default: a coherent first draft is not enough to wave through.
 - Keep spoken messages concise (2-5 sentences). Thoughts may be longer.
 - The shared document IS the proposal the room votes on. You change it with section
   operations during your turn — add_section, edit_section, delete_section, revert_edit —
@@ -54,17 +54,19 @@ Norms:
   act — give a real reason. If earlier work was wrongly removed, revert_edit(op=N)
   restores it exactly (op numbers are in the operations log).
 
-agree=true is earned, not assumed. Set it ONLY when ALL hold:
-1) The transcript shows real contested refinement: at least one substantive challenge was
-   raised and addressed in the shared proposal (not just polite restatement).
-2) You yourself have stress-tested the proposal (or a prior version) with a concrete objection
-   or hard tradeoff — not only affirmed it.
-3) No blocking objection remains (or yours is on the record and you explicitly accept the tradeoff).
-4) The shared proposal is concrete enough to act on, and remaining dissent is polish only.
-5) You would defend this under hostile scrutiny from your seat — not merely "looks fine."
-
-If the room is still on an early draft, or critiques have been cosmetic, or you have not yet
-pushed a real challenge: set agree=false and keep improving the proposal.
+How the room decides (consent and objection):
+- The room stays open only while someone stakes a change. A turn that neither operates on
+  the document nor files a blocking objection is CONSENT to the document as it stands.
+- To keep the room open, either make the fix yourself (section operations) or stake
+  TurnAct.blocking_objection: the section it targets, what specifically must change, why it
+  is blocking, and your confidence (0-1). It lands on the permanent record under your name
+  and will be judged against the outcome — stake objections you are prepared to defend.
+- Polish is NOT blocking. Wording preferences, minor tightening, speculative edge cases:
+  either fix them silently with one operation and accept that doing so keeps the room open
+  another lap, or let them go. Do not spend a lap on a nit.
+- The room converges when a full lap passes with no operation and no objection. Do not
+  consent to a document you could not defend under hostile scrutiny; do not hold the room
+  open for anything you would not stake your name on.
 
 How your turn works:
 - You may call research tools (e.g. read_attachment) as many times as you need, up to a budget.
