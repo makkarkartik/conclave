@@ -1,6 +1,11 @@
 # Conclave deliberation protocol v2
 
-Status: **phases 1–2 implemented** (2026-08-16); phases 3–5 pending · decided 2026-08-15
+Status: **phases 1–3 implemented** (2026-08-16); phases 4–5 pending · decided 2026-08-15
+Phase 3 shipped as **variant (c), union seed** — no judge/anonymization step: every
+sealed draft's sections enter the document as attributed ops (collisions suffixed by
+author), and the dialectic reconciles. Judge-picked-base (§7 as originally written)
+remains the later refinement if reconciliation laps prove expensive. Seats are ordered
+strongest-model-first at start (stopgap for §9's measured ranking).
 Supersedes the v1 mechanism (whole-document `write_proposal`, unanimous `agree` votes,
 fingerprint-equality convergence). The engine — claim loop, leases, laps, pause,
 follow-ups ([architecture.md](architecture.md)) — is untouched by this redesign.

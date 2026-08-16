@@ -81,6 +81,7 @@ async def create_conversation(body: ConversationCreate, db: AsyncSession = Depen
         title=(body.title or topic[:80]).strip(),
         topic=topic,
         chair_ids_json="[]",
+        sealed_start=body.sealed_start,
     )
     conv.chair_ids = body.chair_ids
     db.add(conv)
@@ -164,16 +165,41 @@ async def delete_conversation(conversation_id: str, db: AsyncSession = Depends(g
     return {"ok": True}
 
 
+def _activate(conv: Conversation) -> None:
+    """Waking a room: a sealed room that has not yet seeded its document goes
+    (back) to drafting; everything else deliberates."""
+    fresh = conv.sealed_start and conv.lap == 0 and not conv.converged_solution
+    conv.status = "drafting" if fresh else "running"
+    conv.claimed_until = None
+    conv.claimed_by = None
+
+
+async def _order_chairs(db: AsyncSession, conv: Conversation) -> None:
+    """Smartest model goes first. On a room's first start, seats are ordered by
+    model capability (stable — the chair's seating order breaks ties): the
+    strongest model frames the opening proposal, or leads reconciliation after a
+    sealed start. Rotation order is then fixed for the room's life."""
+    from conclave.db.models import Expert
+    from conclave.runtime.providers import model_tier
+
+    chairs = conv.chair_ids
+    tiers: list[tuple[int, int, str]] = []
+    for i, chair_id in enumerate(chairs):
+        expert = await db.get(Expert, chair_id)
+        tiers.append((model_tier(expert.model) if expert else 99, i, chair_id))
+    conv.chair_ids = [cid for _, _, cid in sorted(tiers)]
+
+
 @router.post("/{conversation_id}/start", response_model=ConversationOut)
 async def start(conversation_id: str, db: AsyncSession = Depends(get_db)):
     conv = await _get_conv(db, conversation_id, full=True)
     if len(conv.chair_ids) < 2:
         raise HTTPException(400, "Seat at least two experts")
-    if conv.status != "running":
-        conv.status = "running"
+    if conv.status not in ("running", "drafting"):
+        if conv.lap == 0 and not conv.messages:
+            await _order_chairs(db, conv)
         conv.chair_index = 0
-        conv.claimed_until = None
-        conv.claimed_by = None
+        _activate(conv)
         await db.commit()
     return conversation_out(conv)
 
@@ -195,10 +221,8 @@ async def resume(conversation_id: str, body: PauseBody, db: AsyncSession = Depen
         raise HTTPException(400, "Seat at least two experts")
     if body.direction:
         conv.user_direction = body.direction
-    conv.status = "running"
-    # Clear any leftover lease (incl. error backoff) so resume takes effect now
-    conv.claimed_until = None
-    conv.claimed_by = None
+    # Clears any leftover lease (incl. error backoff) so resume takes effect now.
+    _activate(conv)
     await db.commit()
     return conversation_out(conv)
 

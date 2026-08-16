@@ -6,6 +6,21 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
 
+# Rough capability order, first match wins; unknown models sort last. This is a
+# stopgap for "smartest model goes first" until the reputation ledger (protocol
+# v2 §9) can rank seats from measured performance instead of name-matching.
+_MODEL_TIERS = ("opus", "gpt-5", "o3", "gemini-2.5-pro", "sonnet", "gpt-4", "gemini", "haiku")
+
+
+def model_tier(model: str) -> int:
+    """Lower is stronger. Ties (and unknowns) preserve the chair's seating order."""
+    m = (model or "").lower()
+    for i, marker in enumerate(_MODEL_TIERS):
+        if marker in m:
+            return i
+    return len(_MODEL_TIERS)
+
+
 def native_search_tool(provider: str) -> dict | None:
     """The provider's own server-side web search, declared rather than executed.
 

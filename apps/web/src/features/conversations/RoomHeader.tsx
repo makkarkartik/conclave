@@ -65,7 +65,9 @@ export function RoomHeader({
             <span className="text-xs text-[var(--color-think)]">
               {speakingId && expertMap[speakingId]
                 ? `${expertMap[speakingId].name} speaking`
-                : active.status}
+                : active.status === 'drafting'
+                  ? 'sealed drafts in progress — experts are working blind, in parallel'
+                  : active.status}
               {active.lap > 0 ? ` · lap ${active.lap}` : ''}
             </span>
             {(active.attachments.length > 0 || attaching) && (
@@ -155,7 +157,7 @@ export function RoomHeader({
               }}
             />
           </label>
-          {active.status === 'running' ? (
+          {['running', 'drafting'].includes(active.status) ? (
             <button
               type="button"
               onClick={onPause}

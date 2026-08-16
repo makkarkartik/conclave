@@ -64,6 +64,7 @@ export type Conversation = {
   chair_index: number
   doc_rev: number
   web_search: boolean
+  sealed_start: boolean
   created_at: string
   updated_at: string
   messages: Message[]
@@ -131,7 +132,12 @@ export const api = {
     req<ConversationUpdates>(
       `/conversations/${id}/updates${after ? `?after=${encodeURIComponent(after)}` : ''}`,
     ),
-  createConversation: (body: { topic: string; chair_ids: string[]; title?: string }) =>
+  createConversation: (body: {
+    topic: string
+    chair_ids: string[]
+    title?: string
+    sealed_start?: boolean
+  }) =>
     req<Conversation>('/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

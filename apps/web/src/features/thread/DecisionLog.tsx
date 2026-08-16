@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Check, CircleDashed, HelpCircle, Minus, X } from 'lucide-react'
+import { Check, CircleDashed, HelpCircle, Minus, PenLine, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
 import type { Expert, Message } from '../../shared/lib/api'
@@ -11,9 +11,10 @@ import type { Expert, Message } from '../../shared/lib/api'
  * the deliberation legible at a glance.
  */
 
-type Stance = 'backs' | 'objects' | 'passed'
+type Stance = 'backs' | 'objects' | 'passed' | 'drafted'
 
 function stanceOf(m: Message): Stance {
+  if (m.action === 'draft') return 'drafted'
   if (m.action === 'forfeit') return 'passed'
   return m.agree ? 'backs' : 'objects'
 }
@@ -34,11 +35,17 @@ const STANCE_STYLE: Record<Stance, { dot: string; text: string; label: string }>
     text: 'text-[var(--color-pass)]',
     label: 'passed',
   },
+  drafted: {
+    dot: 'bg-[var(--color-sky)]',
+    text: 'text-[var(--color-sky)]',
+    label: 'drafted sealed',
+  },
 }
 
 function StanceIcon({ stance, size = 12 }: { stance: Stance; size?: number }) {
   if (stance === 'backs') return <Check size={size} className="text-[#9ddeb5]" />
   if (stance === 'objects') return <X size={size} className="text-[var(--color-coral)]" />
+  if (stance === 'drafted') return <PenLine size={size} className="text-[var(--color-sky)]" />
   return <Minus size={size} className="text-[var(--color-pass)]" />
 }
 

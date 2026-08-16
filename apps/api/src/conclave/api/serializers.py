@@ -80,6 +80,7 @@ def conversation_out(c: Conversation, include_messages: bool = True) -> Conversa
         chair_index=c.chair_index,
         doc_rev=c.doc_rev,
         web_search=c.web_search,
+        sealed_start=c.sealed_start,
         created_at=c.created_at,
         updated_at=c.updated_at,
         messages=[message_out(m) for m in c.messages] if include_messages else [],

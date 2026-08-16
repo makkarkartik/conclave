@@ -60,7 +60,22 @@ class FakeDeliberator(BaseChatModel):
 
         name = name_m.group(1)
         topic = topic_m.group(1).strip()
-        directed = "BINDING CHAIR DIRECTION (obey)" in human
+        directed = "BINDING CHAIR DIRECTION (obey)" in human or (
+            "BINDING CHAIR DIRECTION (obey)" in system
+        )
+
+        if "SEALED DRAFTING" in system:
+            # Sealed draft: prose, no TurnAct. Every fake expert drafts the same
+            # plan (plus a name-distinct angle so union-seeding has collisions
+            # AND orphans to exercise).
+            draft = (
+                f"## Plan: {topic}\n\n"
+                "- **Decision**: adopt the shared plan.\n"
+                "- Steps: 1) draft, 2) review, 3) ship.\n\n"
+                f"## {name}'s angle\n\nA consideration only {name} raised.\n"
+            )
+            msg = AIMessage(content=draft)
+            return ChatResult(generations=[ChatGeneration(message=msg)])
         spoken = (
             f"Following the chair's direction, I endorse the shared plan for: {topic}."
             if directed

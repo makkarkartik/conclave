@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, ChevronDown, FileDiff, Globe, HelpCircle, Minus, X } from 'lucide-react'
+import { Check, ChevronDown, FileDiff, Globe, HelpCircle, Minus, PenLine, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
 import type { Expert, Message } from '../../shared/lib/api'
@@ -9,11 +9,18 @@ import type { Expert, Message } from '../../shared/lib/api'
  * as a chain of decisions, not just a chat. */
 function StanceBadge({ message }: { message: Message }) {
   const stance =
-    message.action === 'forfeit' ? 'passed' : message.agree ? 'backs' : 'objects'
+    message.action === 'draft'
+      ? 'drafted'
+      : message.action === 'forfeit'
+        ? 'passed'
+        : message.agree
+          ? 'backs'
+          : 'objects'
   const style = {
     backs: { bg: 'bg-[#50c878]', label: 'consents to the document', Icon: Check },
     objects: { bg: 'bg-[var(--color-coral)]', label: 'staked a change', Icon: X },
     passed: { bg: 'bg-[var(--color-pass)]', label: 'passed', Icon: Minus },
+    drafted: { bg: 'bg-[var(--color-sky)]', label: 'drafted independently, sealed', Icon: PenLine },
   }[stance]
   return (
     <span

@@ -299,6 +299,63 @@ def blame_lines(result: FoldResult) -> str:
     return "\n".join(lines)
 
 
+def seed_ops_from_drafts(
+    drafts: list[tuple[str, str]],
+    *,
+    used_anchors: set[str] | None = None,
+    start_seq: int = 1,
+    lap: int = 0,
+) -> list[OpRecord]:
+    """Union seed for a sealed start (protocol v2 §7, variant c): every draft's
+    sections become attributed add_section ops — nobody's work is judged away.
+    Heading collisions across drafts get the author's name appended, so competing
+    takes on one topic sit side by side, visibly, awaiting reconciliation. An
+    orphan section (a topic only one draft thought of) can then only leave the
+    document through an attributed delete with a reason.
+
+    `drafts` are (expert_name, draft_markdown), in chair order. `used_anchors`
+    carries anchors already in the document (idempotent partial re-seeding).
+    """
+    used = set(used_anchors or ())
+    ops: list[OpRecord] = []
+    seq = start_seq
+    for name, text in drafts:
+        for s in parse_sections(strip_anchor_tags(text or "")):
+            if s.heading:
+                m = _HEADING.match(s.heading)
+                heading = m.group(2).strip() if m else s.heading.lstrip("# ").strip()
+                body = s.body.strip()
+            else:
+                body = s.body.strip()
+                if not body:
+                    continue
+                heading = f"Overview ({name})"
+            if not heading:
+                continue
+            slug = slugify(heading)
+            if slug in used:
+                base = f"{heading} ({name})"
+                heading, slug = base, slugify(base)
+                n = 2
+                while slug in used:
+                    heading = f"{base} {n}"
+                    slug = slugify(heading)
+                    n += 1
+            used.add(slug)
+            ops.append(
+                OpRecord(
+                    seq=seq,
+                    kind="add_section",
+                    payload={"heading": heading, "text": body},
+                    reason="Sealed draft",
+                    expert_name=name,
+                    lap=lap,
+                )
+            )
+            seq += 1
+    return ops
+
+
 def ops_log_lines(ops: list[OpRecord], limit: int = 12) -> str:
     """The recent tail of the operation log, as shown to experts (revert targets)."""
     dead = suppressed_seqs(ops)

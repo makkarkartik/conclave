@@ -14,6 +14,7 @@ export function NewRoomModal({
 }) {
   const [topic, setTopic] = useState('')
   const [selected, setSelected] = useState<string[]>([])
+  const [sealed, setSealed] = useState(true)
   const [err, setErr] = useState('')
 
   function toggle(id: string) {
@@ -32,7 +33,9 @@ export function NewRoomModal({
         />
       </label>
       <div className="mt-4">
-        <div className="mb-2 text-xs text-[var(--color-think)]">Seat experts (order = chair order)</div>
+        <div className="mb-2 text-xs text-[var(--color-think)]">
+          Seat experts — the strongest model leads; your order breaks ties
+        </div>
         <div className="max-h-40 space-y-1 overflow-y-auto">
           {experts.map((e) => (
             <label
@@ -46,6 +49,19 @@ export function NewRoomModal({
           ))}
         </div>
       </div>
+      <label className="mt-4 flex cursor-pointer items-start gap-2 rounded-xl border border-[var(--color-line)] px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={sealed}
+          onChange={(e) => setSealed(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span className="text-xs leading-relaxed text-[var(--color-think)]">
+          <span className="font-medium text-white">Sealed start</span> — every expert drafts
+          independently before seeing anyone else&apos;s work; deliberation then reconciles the
+          drafts. Prevents the first speaker from framing the room.
+        </span>
+      </label>
       {err && <p className="mt-2 text-xs text-[var(--color-coral)]">{err}</p>}
       <div className="mt-4 flex justify-end">
         <button
@@ -57,7 +73,11 @@ export function NewRoomModal({
               return
             }
             try {
-              const c = await api.createConversation({ topic, chair_ids: selected })
+              const c = await api.createConversation({
+                topic,
+                chair_ids: selected,
+                sealed_start: sealed,
+              })
               onCreated(c.id)
             } catch (e) {
               setErr(String(e))

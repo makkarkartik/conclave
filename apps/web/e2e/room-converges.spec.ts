@@ -22,14 +22,15 @@ test('a room of fake experts deliberates to convergence in the browser', async (
 
     await page.getByRole('button', { name: 'Start' }).click()
 
-    // Turns stream in via polling: both experts take the floor
-    await expect(page.getByText('stress-tested').first()).toBeVisible({ timeout: 30_000 })
-    await expect(page.locator('main').getByText(`Ada ${sfx}`, { exact: true }).first()).toBeVisible()
-
-    // Proposal writes show a doc-diff block on the bubble
-    await expect(page.getByText('Created shared document', { exact: false }).first()).toBeVisible({
+    // Sealed start (the default): both experts draft blind, in parallel
+    await expect(page.getByText('Drafted independently', { exact: false }).first()).toBeVisible({
       timeout: 30_000,
     })
+    await expect(page.getByText('Sealed draft').first()).toBeVisible()
+
+    // Then the dialectic: turns stream in via polling, both experts take the floor
+    await expect(page.getByText('stress-tested').first()).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator('main').getByText(`Ada ${sfx}`, { exact: true }).first()).toBeVisible()
 
     // Convergence: header badge flips and the solution card appears
     await expect(page.getByText('Converged', { exact: true })).toBeVisible({ timeout: 60_000 })

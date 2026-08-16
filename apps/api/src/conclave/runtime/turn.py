@@ -129,6 +129,118 @@ It is your turn. Research with tools if needed, then end with one TurnAct call.
 """
 
 
+DRAFT_SYSTEM = """You are {name}, a seated expert in a Conclave think tank.
+Persona: {persona}
+
+SEALED DRAFTING. You are answering alone: no other expert's work is visible to you,
+and none of them can see yours. Every seat's draft is merged into one document
+afterward, section by section, and the room deliberates over the union.
+
+Write your complete, best answer to the topic as **GitHub-flavored Markdown with clear
+`##` section headings** — each section enters the shared document under your name.
+Cover what matters, including anything the others might overlook: an angle only you
+raise reaches the room only if you write it now.
+{direction_block}
+You may use research tools first (e.g. read_attachment). Finish by replying with the
+draft itself — no preamble, no meta-commentary."""
+
+DRAFT_PROMPT = """Topic: {topic}
+
+Attachments (read with the read_attachment tool):
+{attachments}
+
+Write your sealed draft now."""
+
+
+@dataclass
+class DraftOutcome:
+    text: str
+    tool_chips: list[str] = field(default_factory=list)
+    citations: list[dict] = field(default_factory=list)
+
+
+async def run_sealed_draft(
+    *,
+    name: str,
+    persona: str,
+    provider: str,
+    model: str,
+    api_key: str,
+    topic: str,
+    user_direction: str = "",
+    attachments: list[Attachment] | None = None,
+    web_search: bool = False,
+    llm: Any | None = None,
+) -> DraftOutcome:
+    """One sealed draft: a bounded tool loop terminated by prose (no TurnAct —
+    there is no floor to act on yet, only a blank page)."""
+    tools = AttachmentTools(list(attachments or []))
+    if llm is None:
+        llm = build_chat_model(provider, model, api_key)
+    tool_schemas: list[Any] = list(tools.tools())
+    if web_search:
+        native = native_search_tool(provider)
+        if native:
+            tool_schemas.append(native)
+    bound = llm.bind_tools(tool_schemas) if tool_schemas else llm
+
+    direction = (user_direction or "").strip()
+    messages: list[BaseMessage] = [
+        SystemMessage(
+            content=DRAFT_SYSTEM.format(
+                name=name,
+                persona=persona or "Rigorous specialist who challenges weak reasoning, then synthesizes",
+                direction_block=(
+                    f"\nBINDING CHAIR DIRECTION (obey): {direction}\n" if direction else ""
+                ),
+            )
+        ),
+        HumanMessage(
+            content=DRAFT_PROMPT.format(
+                topic=topic,
+                attachments="\n".join(f"- id={a.id} name={a.filename}" for a in (attachments or []))
+                or "(none)",
+            )
+        ),
+    ]
+    chips: list[str] = []
+    citations: list[dict] = []
+    searched = False
+    nudged = False
+
+    for _ in range(settings.max_tool_iterations):
+        response: AIMessage = await bound.ainvoke(messages)
+        messages.append(response)
+        found = extract_citations(response.content)
+        seen = {c["url"] for c in citations}
+        fresh = [c for c in found if c["url"] not in seen]
+        if (fresh or used_web_search(response.content)) and not searched:
+            searched = True
+            chips.append("Searched the web")
+        citations.extend(fresh)
+
+        calls = list(getattr(response, "tool_calls", None) or [])
+        if not calls:
+            text = _text_of(response)
+            if text:
+                return DraftOutcome(text=text, tool_chips=chips, citations=citations)
+            if nudged:
+                break
+            nudged = True
+            messages.append(HumanMessage(content="Write the draft now."))
+            continue
+        for call in calls:
+            result = await tools.execute(call["name"], call["args"] or {})
+            if result is None:
+                result = f"Unknown tool: {call['name']}"
+            else:
+                label = tools.chip(call["name"], call["args"] or {})
+                chips.append(label or f"Used {call['name']}")
+            messages.append(ToolMessage(content=result, tool_call_id=call["id"]))
+
+    return DraftOutcome(text="", tool_chips=chips, citations=citations)
+
+
 class ToolProvider(Protocol):
     """The seam future capability lands behind: MCP connectors, room file generation,
     sandboxed OS tools. A provider contributes tool schemas and executes its own calls."""

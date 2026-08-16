@@ -92,6 +92,9 @@ class Conversation(Base):
     chair_index: Mapped[int] = mapped_column(Integer, default=0)
     doc_rev: Mapped[int] = mapped_column(Integer, default=0)
     web_search: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Sealed start (protocol v2 §7): experts draft independently before any of
+    # them sees another's work; the union seeds the document.
+    sealed_start: Mapped[bool] = mapped_column(Boolean, default=False)
     # Set while answering a follow-up: the room runs until this lap, then goes
     # back to converged without touching the solution.
     consult_until_lap: Mapped[int | None] = mapped_column(Integer, nullable=True)

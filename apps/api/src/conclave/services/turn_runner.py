@@ -12,13 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from conclave.config import settings
 from conclave.db.ids import new_id
-from conclave.db.models import Conversation, DocOp, Expert, Message
+from conclave.db.models import Attachment, Conversation, DocOp, Expert, Message
 from conclave.db.session import SessionLocal
 from conclave.domain.converge import lap_settled
 from conclave.domain.diff import format_doc_change
+from conclave.domain.docops import available_anchors, fold, seed_ops_from_drafts, slugify
 from conclave.domain.files import write_shared_doc
-from conclave.runtime.turn import TurnOutcome, run_expert_turn
-from conclave.services.context import build_turn_context, fold_lap_into_summary
+from conclave.runtime.turn import DraftOutcome, TurnOutcome, run_expert_turn, run_sealed_draft
+from conclave.services.context import build_turn_context, fold_lap_into_summary, load_doc_ops
 from conclave.services.keys import resolve_api_key
 
 log = logging.getLogger("conclave.runner")
@@ -38,7 +39,7 @@ async def claim_next(db: AsyncSession, worker_id: str) -> str | None:
     conv = await db.scalar(
         select(Conversation)
         .where(
-            Conversation.status.in_(("running", "consulting")),
+            Conversation.status.in_(("running", "consulting", "drafting")),
             or_(Conversation.claimed_until.is_(None), Conversation.claimed_until < _now()),
         )
         .order_by(Conversation.updated_at.asc())
@@ -97,13 +98,138 @@ def _error_outcome(exc: Exception) -> TurnOutcome:
     )
 
 
+async def _run_drafting(db, conv: Conversation) -> None:
+    """The sealed-divergence prefix (v2 §7c), executed under the room's claim:
+    every seat drafts concurrently and blind, then the union of their sections
+    seeds the document and the dialectic begins. Idempotent — a retried run
+    skips seats whose lap-0 draft already landed."""
+    chairs = conv.chair_ids
+    existing = {
+        m.chair_index
+        for m in (
+            await db.scalars(
+                select(Message).where(Message.conversation_id == conv.id, Message.lap == 0)
+            )
+        ).all()
+    }
+    attachments = list(
+        (await db.scalars(select(Attachment).where(Attachment.conversation_id == conv.id))).all()
+    )
+    # Resolve keys up front, serially — the AsyncSession must not be shared by
+    # the concurrent draft tasks below.
+    seats: list[tuple[int, Expert, str]] = []
+    for idx, chair_id in enumerate(chairs):
+        if idx in existing:
+            continue
+        expert = await db.get(Expert, chair_id)
+        if expert is not None:
+            seats.append((idx, expert, await resolve_api_key(db, expert)))
+
+    async def one(expert: Expert, api_key: str) -> DraftOutcome:
+        try:
+            return await run_sealed_draft(
+                name=expert.name,
+                persona=expert.persona,
+                provider=expert.provider,
+                model=expert.model,
+                api_key=api_key,
+                topic=conv.topic,
+                user_direction=conv.user_direction,
+                attachments=attachments,
+                web_search=conv.web_search,
+            )
+        except Exception as exc:  # noqa: BLE001 — one dead seat must not kill the phase
+            log.warning("sealed draft failed in %s (%s): %s", conv.id, expert.name, exc)
+            return DraftOutcome(text="", tool_chips=["Error"])
+
+    results = await asyncio.gather(*(one(e, k) for _, e, k in seats)) if seats else []
+
+    # Seed: all drafts' sections as attributed ops, collisions suffixed by author.
+    prior_ops, _ = await load_doc_ops(db, conv)
+    used = set(available_anchors(fold(prior_ops).text)) if prior_ops else set()
+    next_seq = max((o.seq for o in prior_ops), default=0) + 1
+    all_ops = list(prior_ops)
+    for (idx, expert, _key), outcome in zip(seats, results):
+        msg_id = new_id()
+        sections = seed_ops_from_drafts(
+            [(expert.name, outcome.text)], used_anchors=used, start_seq=next_seq
+        )
+        next_seq += len(sections)
+        # seed_ops_from_drafts copies the set; carry this seat's anchors forward
+        # so the next seat's collisions are suffixed.
+        used.update(slugify(op.payload["heading"]) for op in sections)
+        drafted = bool(sections)
+        msg = Message(
+            id=msg_id,
+            tenant_id=conv.tenant_id,
+            conversation_id=conv.id,
+            expert_id=expert.id,
+            expert_name=expert.name,
+            provider=expert.provider,
+            model=expert.model,
+            lap=0,
+            chair_index=idx,
+            content=(
+                f"Drafted independently — {len(sections)} section(s): "
+                + ", ".join(op.payload["heading"] for op in sections)
+                if drafted
+                else "(draft failed — joining at deliberation)"
+            ),
+            gist=f"{expert.name} drafted independently, sealed"
+            if drafted
+            else f"{expert.name}'s sealed draft failed",
+            action="draft",
+            agree=False,
+        )
+        msg.chips = ["Sealed draft", *outcome.tool_chips] if drafted else outcome.tool_chips
+        msg.citations = outcome.citations
+        db.add(msg)
+        for op in sections:
+            row = DocOp(
+                id=new_id(),
+                tenant_id=conv.tenant_id,
+                conversation_id=conv.id,
+                message_id=msg_id,
+                expert_id=expert.id,
+                expert_name=op.expert_name,
+                seq=op.seq,
+                lap=0,
+                kind=op.kind,
+                anchor=str(op.payload.get("heading", ""))[:200],
+                reason=op.reason,
+            )
+            row.payload = op.payload
+            db.add(row)
+            all_ops.append(op)
+
+    # A pause that landed mid-drafting wins: drafts and ops persist, the flip waits.
+    await db.refresh(conv, attribute_names=["status"])
+    if conv.status == "drafting":
+        folded = fold(all_ops).text
+        conv.shared_proposal = folded
+        write_shared_doc(conv.id, folded)
+        conv.doc_rev += 1
+        conv.lap = 1
+        conv.chair_index = 0
+        conv.status = "running"
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Another worker completed drafting for this room (expired lease + retry).
+        await db.rollback()
+        log.info("drafting collision in %s", conv.id)
+
+
 async def run_one_turn(conversation_id: str, worker_id: str) -> None:
     heartbeat = asyncio.create_task(_heartbeat(conversation_id, worker_id))
     errored = False
     try:
         async with SessionLocal() as db:
             conv = await db.get(Conversation, conversation_id)
-            if conv is None or conv.status not in ("running", "consulting"):
+            if conv is None or conv.status not in ("running", "consulting", "drafting"):
+                return
+            if conv.status == "drafting":
+                await _run_drafting(db, conv)
                 return
             consulting = conv.status == "consulting"
 

@@ -15,6 +15,7 @@ from conclave.domain.docops import (
     normalize_anchor,
     ops_log_lines,
     parse_sections,
+    seed_ops_from_drafts,
     slugify,
     strip_anchor_tag_line,
     strip_anchor_tags,
@@ -179,6 +180,32 @@ async def test_doctools_sanitizes_echoed_annotations():
     assert out.startswith("Applied")
     assert available_anchors(dt.doc_text) == ["bottom-line"]
     assert "v2" in dt.doc_text and "{#" not in dt.doc_text
+
+
+def test_seed_union_keeps_every_draft_and_suffixes_collisions():
+    ada = "intro thoughts\n\n## Plan\nAda's plan\n\n## Risks\nrecall check\n"
+    bo = "## Plan\nBo's plan\n\n## Costs\nnumbers\n"
+    ops = seed_ops_from_drafts([("Ada", ada), ("Bo", bo)])
+    headings = [op.payload["heading"] for op in ops]
+    # Ada's preamble becomes an attributed overview; Bo's colliding Plan gets his name.
+    assert headings == ["Overview (Ada)", "Plan", "Risks", "Plan (Bo)", "Costs"]
+    assert all(op.kind == "add_section" and op.reason == "Sealed draft" for op in ops)
+    folded = fold(ops)
+    # The orphan section (Risks) survives into the document — deletable only
+    # by an attributed op with a reason.
+    assert "recall check" in folded.text
+    assert folded.blame["risks"].expert_name == "Ada"
+    assert folded.blame["plan-bo"].expert_name == "Bo"
+
+
+def test_seed_is_idempotent_against_existing_anchors():
+    first = seed_ops_from_drafts([("Ada", "## Plan\nv1\n")])
+    used = {op.payload["heading"].lower() for op in first}
+    second = seed_ops_from_drafts(
+        [("Bo", "## Plan\nv2\n")], used_anchors={"plan"}, start_seq=len(first) + 1
+    )
+    assert second[0].payload["heading"] == "Plan (Bo)"
+    assert used  # first seeding unaffected
 
 
 def test_blame_and_log_render():

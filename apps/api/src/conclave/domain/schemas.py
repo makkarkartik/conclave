@@ -62,6 +62,8 @@ class ConversationCreate(BaseModel):
     topic: str
     title: str | None = None
     chair_ids: list[str] = Field(default_factory=list)
+    # Sealed start: experts draft independently before deliberating (v2 §7).
+    sealed_start: bool = False
 
 
 class ConversationUpdate(BaseModel):
@@ -117,6 +119,7 @@ class ConversationOut(BaseModel):
     chair_index: int
     doc_rev: int
     web_search: bool = False
+    sealed_start: bool = False
     created_at: datetime
     updated_at: datetime
     messages: list[MessageOut] = Field(default_factory=list)
