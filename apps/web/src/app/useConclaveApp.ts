@@ -15,6 +15,7 @@ export function useConclaveApp() {
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null)
   const [showNewRoom, setShowNewRoom] = useState(false)
   const [showDoc, setShowDoc] = useState(false)
+  const [docTab, setDocTab] = useState<'doc' | 'history' | 'plan'>('doc')
   const [showLog, setShowLog] = useState(false)
   const [showPause, setShowPause] = useState(false)
   const [direction, setDirection] = useState('')
@@ -31,6 +32,7 @@ export function useConclaveApp() {
   const lastMsgId = useRef<string | null>(null)
   const statusRef = useRef<string>('')
   const docRevRef = useRef<number>(0)
+  const phaseRef = useRef<string>('deliberate')
 
   const loadConversation = useCallback(async (id: string) => {
     const c = await api.getConversation(id)
@@ -42,6 +44,7 @@ export function useConclaveApp() {
     lastMsgId.current = c.messages.length ? c.messages[c.messages.length - 1].id : null
     statusRef.current = c.status
     docRevRef.current = c.doc_rev
+    phaseRef.current = c.plan_phase
   }, [])
 
   useEffect(() => {
@@ -71,9 +74,11 @@ export function useConclaveApp() {
         setThinkingId(u.status === 'running' ? u.speaking_expert_id : null)
         const statusChanged = u.status !== statusRef.current
         const docChanged = u.doc_rev !== docRevRef.current
-        if (statusChanged || docChanged) {
+        const phaseChanged = u.plan_phase !== phaseRef.current
+        if (statusChanged || docChanged || phaseChanged) {
           statusRef.current = u.status
           docRevRef.current = u.doc_rev
+          phaseRef.current = u.plan_phase
           await loadConversation(activeId)
           if (statusChanged) await refreshLists()
         }
@@ -262,6 +267,11 @@ export function useConclaveApp() {
     editingExpert,
     showNewRoom,
     showDoc,
+    docTab,
+    openDoc: (tab: 'doc' | 'history' | 'plan') => {
+      setDocTab(tab)
+      setShowDoc(true)
+    },
     showLog,
     showPause,
     direction,

@@ -108,17 +108,20 @@ class FakeDeliberator(BaseChatModel):
             else f"I stress-tested the plan for '{topic}' and the tradeoffs hold."
         )
 
-        seeded = "**Decision**: adopt the shared plan" in human or any(
+        # v3: the document is frozen. If the plan is neither in the document nor
+        # already proposed, propose it (one propose_add_section, then TurnAct on
+        # the next call after the ToolMessage). Otherwise vote agree on every
+        # open proposal this seat has not voted on and end the turn.
+        in_doc = "**Decision**: adopt the shared plan" in human
+        proposed = "ADD section \"Plan:" in human or any(
             isinstance(m, ToolMessage) for m in messages
         )
-        if not seeded:
-            # Empty document: seed the plan as one section op, then (next call,
-            # after the ToolMessage lands) finish the turn with TurnAct.
+        if not in_doc and not proposed:
             msg = AIMessage(
                 content="",
                 tool_calls=[
                     {
-                        "name": "add_section",
+                        "name": "propose_add_section",
                         "id": "call_fake_seed",
                         "type": "tool_call",
                         "args": {
@@ -134,6 +137,14 @@ class FakeDeliberator(BaseChatModel):
             )
             return ChatResult(generations=[ChatGeneration(message=msg)])
 
+        # Vote agree on every open proposal the ledger flags for this seat.
+        owed: list[int] = []
+        block = human.split("### Open proposals", 1)[1] if "### Open proposals" in human else ""
+        for chunk in re.split(r"\n(?=P\d+ \[)", block):
+            m = re.match(r"P(\d+) \[", chunk.strip())
+            if m and "YOU HAVE NOT VOTED" in chunk:
+                owed.append(int(m.group(1)))
+
         msg = AIMessage(
             content="",
             tool_calls=[
@@ -146,6 +157,7 @@ class FakeDeliberator(BaseChatModel):
                         "action": "speak",
                         "message": spoken,
                         "gist": f"{name} endorsed the shared plan",
+                        "votes": [{"proposal": n, "stance": "agree"} for n in owed],
                     },
                 }
             ],

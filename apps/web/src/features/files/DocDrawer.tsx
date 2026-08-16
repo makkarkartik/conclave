@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FileText, History, PenLine, X } from 'lucide-react'
+import { Check, ChevronDown, ClipboardList, FileText, History, PenLine, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
-import { api, type DocOpRow, type DocSection, type Expert } from '../../shared/lib/api'
+import { api, type DocOpRow, type DocSection, type Expert, type Proposal } from '../../shared/lib/api'
 
 function isStubDoc(text: string) {
   const t = text.trim()
@@ -138,12 +138,203 @@ function HistoryView({
   )
 }
 
+const PROPOSAL_KIND: Record<string, { label: string; cls: string }> = {
+  add_section: { label: 'add', cls: 'bg-[rgba(80,200,120,0.14)] text-[#9ddeb5]' },
+  edit_section: { label: 'edit', cls: 'bg-[rgba(107,163,255,0.14)] text-[var(--color-sky)]' },
+  delete_section: { label: 'delete', cls: 'bg-[rgba(255,139,107,0.14)] text-[var(--color-coral)]' },
+  merge_sections: { label: 'merge', cls: 'bg-[rgba(255,213,138,0.14)] text-[#ffd58a]' },
+}
+
+const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
+  open: { label: 'open — awaiting votes', cls: 'text-[var(--color-sky)]' },
+  approved: { label: 'approved', cls: 'text-[#9ddeb5]' },
+  rejected: { label: 'rejected', cls: 'text-[var(--color-coral)]' },
+  superseded: { label: 'superseded by amendment', cls: 'text-[var(--color-pass)]' },
+  executed: { label: 'executed', cls: 'text-[#9ddeb5]' },
+  skipped: { label: 'skipped at execution', cls: 'text-[#ffd58a]' },
+}
+
+function ProposalCard({
+  p,
+  accentOf,
+  seats,
+}: {
+  p: Proposal
+  accentOf: (name: string) => string | undefined
+  seats: string[]
+}) {
+  const [open, setOpen] = useState(false)
+  const kind = PROPOSAL_KIND[p.kind] ?? PROPOSAL_KIND.edit_section
+  const status = STATUS_STYLE[p.status] ?? STATUS_STYLE.open
+  const dim = p.status === 'superseded' || p.status === 'rejected' || p.status === 'skipped'
+  const voted = new Set(p.votes.map((v) => v.expert))
+  const pending = seats.filter((n) => n !== p.expert && !voted.has(n))
+  return (
+    <div
+      className={clsx(
+        'rounded-xl border border-[var(--color-line)] bg-black/15 px-3 py-2.5',
+        dim && 'opacity-55',
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 w-7 shrink-0 font-mono text-[10px] text-[var(--color-pass)]">
+          P{p.num}
+        </span>
+        <span className={clsx('mt-0.5 shrink-0 rounded-full px-1.5 py-px text-[10px]', kind.cls)}>
+          {kind.label}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span
+              className={clsx(
+                'min-w-0 truncate text-xs font-medium text-[var(--color-speak)]',
+                p.status === 'rejected' && 'line-through',
+              )}
+              title={p.target}
+            >
+              {p.target}
+            </span>
+            {p.supersedes && (
+              <span className="shrink-0 text-[10px] text-[var(--color-pass)]">
+                amends P{p.supersedes}
+              </span>
+            )}
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--color-think)]">
+            <Avatar name={p.expert} accent={accentOf(p.expert)} size={14} />
+            <span>{p.expert}</span>
+            <span className="text-[var(--color-pass)]">· lap {p.lap} ·</span>
+            <span className={status.cls}>{status.label}</span>
+          </div>
+          {p.reason && (
+            <div className="mt-1 text-[11px] leading-relaxed text-[var(--color-think)] italic">
+              {p.reason}
+            </div>
+          )}
+          {(p.votes.length > 0 || (p.status === 'open' && pending.length > 0)) && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {p.votes.map((v) => (
+                <span
+                  key={v.expert}
+                  title={v.reason || undefined}
+                  className={clsx(
+                    'flex items-center gap-1 rounded-full px-1.5 py-px text-[10px]',
+                    v.stance === 'agree'
+                      ? 'bg-[rgba(80,200,120,0.14)] text-[#9ddeb5]'
+                      : 'bg-[rgba(255,139,107,0.14)] text-[var(--color-coral)]',
+                  )}
+                >
+                  {v.stance === 'agree' ? (
+                    <Check size={9} strokeWidth={3} />
+                  ) : (
+                    <X size={9} strokeWidth={3} />
+                  )}
+                  {v.expert}
+                  {v.stance === 'reject' && v.reason ? ` — ${v.reason}` : ''}
+                </span>
+              ))}
+              {p.status === 'open' &&
+                pending.map((n) => (
+                  <span
+                    key={n}
+                    className="rounded-full border border-dashed border-[var(--color-line)] px-1.5 py-px text-[10px] text-[var(--color-pass)]"
+                  >
+                    {n} — pending
+                  </span>
+                ))}
+            </div>
+          )}
+          {p.text && (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="mt-1.5 flex items-center gap-1 text-[10px] text-[var(--color-sky)] hover:underline"
+            >
+              <ChevronDown size={11} className={clsx('transition-transform', open && 'rotate-180')} />
+              {open ? 'hide proposed text' : 'show proposed text'}
+            </button>
+          )}
+          {open && p.text && (
+            <div className="solution-md mt-2 rounded-lg border border-[var(--color-line)] bg-black/20 px-3 py-2 text-[12px]">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.text}</ReactMarkdown>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** The plan the room is deliberating (protocol v3): every proposed change, its
+ * votes, and its fate. The document stays frozen until this settles. */
+function PlanView({
+  proposals,
+  accentOf,
+  seats,
+  phase,
+}: {
+  proposals: Proposal[]
+  accentOf: (name: string) => string | undefined
+  seats: string[]
+  phase: string
+}) {
+  if (!proposals.length) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
+        <ClipboardList className="text-[var(--color-pass)]" size={28} />
+        <p className="text-sm text-[var(--color-think)]">
+          No proposals yet. The document is frozen while the room deliberates; experts propose
+          changes here, vote on each other&apos;s, and the approved plan is executed once at the
+          end.
+        </p>
+      </div>
+    )
+  }
+  const live = proposals.filter((p) => p.status === 'open')
+  const approved = proposals.filter((p) => p.status === 'approved' || p.status === 'executed')
+  const rest = proposals.filter((p) => !live.includes(p) && !approved.includes(p))
+  const group = (title: string, items: Proposal[]) =>
+    items.length > 0 && (
+      <div className="px-5 py-4">
+        <div className="mb-2.5 text-[10px] font-semibold tracking-wider text-[var(--color-pass)] uppercase">
+          {title}
+        </div>
+        <div className="space-y-2">
+          {items
+            .slice()
+            .sort((a, b) => b.num - a.num)
+            .map((p) => (
+              <ProposalCard key={p.num} p={p} accentOf={accentOf} seats={seats} />
+            ))}
+        </div>
+      </div>
+    )
+  return (
+    <div className="min-h-0 flex-1 divide-y divide-[var(--color-line)] overflow-y-auto overscroll-contain">
+      <div className="px-5 py-3 text-[11px] text-[var(--color-think)]">
+        {phase === 'execute'
+          ? 'Plan approved — the executor is applying it to the document.'
+          : phase === 'confirm'
+            ? 'Plan executed — the room is confirming the result.'
+            : `${live.length} open · ${approved.length} approved · ${rest.length} settled otherwise. Document frozen until the plan settles.`}
+      </div>
+      {group('Open — awaiting votes', live)}
+      {group('Approved — will execute', approved)}
+      {group('Rejected, superseded, skipped', rest)}
+    </div>
+  )
+}
+
 export function DocDrawer({
   conversationId,
   content,
   fallback,
   docRev,
   experts,
+  seatNames,
+  planPhase,
+  messageCount,
+  initialTab = 'doc',
   editable,
   onClose,
   onSave,
@@ -153,6 +344,10 @@ export function DocDrawer({
   fallback?: string
   docRev: number
   experts: Expert[]
+  seatNames: string[]
+  planPhase: string
+  messageCount: number
+  initialTab?: 'doc' | 'history' | 'plan'
   editable: boolean
   onClose: () => void
   onSave: (c: string) => Promise<void>
@@ -163,16 +358,32 @@ export function DocDrawer({
     return content
   }, [content, fallback])
 
-  const [tab, setTab] = useState<'doc' | 'history'>('doc')
+  const [tab, setTab] = useState<'doc' | 'history' | 'plan'>(initialTab)
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(resolved)
   const [busy, setBusy] = useState(false)
   const [sections, setSections] = useState<DocSection[]>([])
   const [ops, setOps] = useState<DocOpRow[]>([])
+  const [proposals, setProposals] = useState<Proposal[]>([])
 
   useEffect(() => {
     setText(resolved)
   }, [resolved])
+
+  useEffect(() => {
+    let stale = false
+    api
+      .getProposals(conversationId)
+      .then((ps) => {
+        if (!stale) setProposals(ps)
+      })
+      .catch(() => {
+        /* best-effort */
+      })
+    return () => {
+      stale = true
+    }
+  }, [conversationId, docRev, messageCount])
 
   useEffect(() => {
     let stale = false
@@ -234,6 +445,23 @@ export function DocDrawer({
             </span>
           )}
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('plan')}
+          className={clsx(
+            'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition',
+            tab === 'plan'
+              ? 'bg-white/[0.07] text-white'
+              : 'text-[var(--color-think)] hover:bg-white/[0.04]',
+          )}
+        >
+          <ClipboardList size={13} /> Plan
+          {proposals.filter((p) => p.status === 'open').length > 0 && (
+            <span className="rounded-full bg-[rgba(107,163,255,0.18)] px-1.5 text-[10px] text-[var(--color-sky)]">
+              {proposals.filter((p) => p.status === 'open').length}
+            </span>
+          )}
+        </button>
         <div className="ml-auto flex items-center gap-3">
           {!empty && (
             <span className="text-[10px] text-[var(--color-pass)]">
@@ -261,7 +489,9 @@ export function DocDrawer({
         </div>
       </div>
 
-      {tab === 'history' ? (
+      {tab === 'plan' ? (
+        <PlanView proposals={proposals} accentOf={accentOf} seats={seatNames} phase={planPhase} />
+      ) : tab === 'history' ? (
         <HistoryView sections={sections} ops={ops} accentOf={accentOf} />
       ) : empty ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-8 text-center">

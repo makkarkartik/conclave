@@ -28,9 +28,10 @@ test('a room of fake experts deliberates to convergence in the browser', async (
     })
     await expect(page.getByText('Sealed draft').first()).toBeVisible()
 
-    // Then the settlement poll: both experts consent in parallel — slim rows, no
-    // serial turns spent on politeness
-    await expect(page.getByText('consents', { exact: false }).first()).toBeVisible({
+    // Then deliberation over the frozen union (protocol v3): experts take turns
+    // proposing and voting; the Plan view is one click away
+    await expect(page.getByRole('button', { name: 'Plan' })).toBeVisible()
+    await expect(page.getByText('stress-tested', { exact: false }).first()).toBeVisible({
       timeout: 30_000,
     })
     await expect(page.locator('main').getByText(`Ada ${sfx}`, { exact: true }).first()).toBeVisible()

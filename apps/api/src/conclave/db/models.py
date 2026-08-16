@@ -99,6 +99,10 @@ class Conversation(Base):
     # order. Written atomically with the poll's consent rows; drained as the
     # claimants take their serial turns.
     floor_queue_json: Mapped[str] = mapped_column(Text, default="[]")
+    # Protocol v3 phase within a running room: "deliberate" (doc frozen, proposals
+    # and votes accrue) -> "execute" (plan approved; the executor seat applies it)
+    # -> "confirm" (one confirmation poll over the executed document).
+    plan_phase: Mapped[str] = mapped_column(String(20), default="deliberate")
     # Set while answering a follow-up: the room runs until this lap, then goes
     # back to converged without touching the solution.
     consult_until_lap: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -239,6 +243,69 @@ class DocOp(Base):
     @payload.setter
     def payload(self, value: dict) -> None:
         self.payload_json = json.dumps(value)
+
+
+class Proposal(Base):
+    """A proposed document change (protocol v3). Executable and in full detail;
+    the plan is the set of these that survive voting."""
+
+    __tablename__ = "proposals"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "num", name="uq_proposals_num"),
+        Index("ix_proposals_conv", "conversation_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"))
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE")
+    )
+    message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    expert_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    expert_name: Mapped[str] = mapped_column(String(120), default="")
+    num: Mapped[int] = mapped_column(Integer)
+    lap: Mapped[int] = mapped_column(Integer, default=0)
+    kind: Mapped[str] = mapped_column(String(30))
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    reason: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    supersedes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    superseded_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    @property
+    def payload(self) -> dict:
+        return json.loads(self.payload_json or "{}")
+
+    @payload.setter
+    def payload(self, value: dict) -> None:
+        self.payload_json = json.dumps(value)
+
+
+class ProposalVote(Base):
+    """One seat's vote on one proposal. Silence is consent, so only explicit votes
+    are rows; a reject carries its reason onto the record."""
+
+    __tablename__ = "proposal_votes"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id", "proposal_num", "expert_name", name="uq_proposal_votes_seat"
+        ),
+        Index("ix_proposal_votes_conv", "conversation_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"))
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE")
+    )
+    message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    proposal_num: Mapped[int] = mapped_column(Integer)
+    expert_name: Mapped[str] = mapped_column(String(120), default="")
+    stance: Mapped[str] = mapped_column(String(10))
+    reason: Mapped[str] = mapped_column(Text, default="")
+    lap: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Attachment(Base):

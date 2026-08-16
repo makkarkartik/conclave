@@ -125,10 +125,13 @@ async def test_sealed_room_drafts_seeds_and_settles(db_or_skip, monkeypatch):
             by_msg = {m.id for m in drafts}
             assert all(op.message_id in by_msg for op in ops)
 
-            # Fast convergence: one parallel all-consent poll at lap 1 settles a
-            # sealed room (floor 2) — consent rows fill the lap, no serial turns.
-            consents = [m for m in msgs if m.action == "consent"]
-            assert len(consents) == 2 and all(m.lap == 1 for m in consents)
+            # v3: deliberation over the union seed. Nobody proposes anything, so
+            # the ledger is settled-and-empty; one quiet lap after the drafts meets
+            # the sealed floor (2) and the frozen union itself is the answer — no
+            # execution phase, no doc ops beyond the seed.
+            turns = [m for m in msgs if m.action == "speak"]
+            assert len(turns) == 2 and {m.lap for m in turns} == {1}
+            assert not [m for m in msgs if m.action == "execute"]
             assert conv.status == "converged"
             assert conv.lap == 2
             assert conv.converged_solution == conv.shared_proposal

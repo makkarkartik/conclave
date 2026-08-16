@@ -1,6 +1,6 @@
 # Conclave deliberation protocol v2
 
-Status: **phases 1–3 implemented** (2026-08-16); phases 4–5 pending · decided 2026-08-15
+Status: **phases 1–3 implemented** (2026-08-16); **v3 plan-then-execute (§9b) decided 2026-08-16, building**; phases 4–5 pending · decided 2026-08-15
 Phase 3 shipped as **variant (c), union seed** — no judge/anonymization step: every
 sealed draft's sections enter the document as attributed ops (collisions suffixed by
 author), and the dialectic reconciles. Judge-picked-base (§7 as originally written)
@@ -152,6 +152,50 @@ in-context (shown in the expert's prompt). Guardrails: decay (no entrenchment),
 domain-conditioning (medicine ≠ code), reward yield as well as precision (or experts
 learn to stake only safe objections — Goodhart).
 
+## 9b. Protocol v3: deliberate the plan, then execute it once (decided 2026-08-16)
+
+v2 lets every turn mutate the document. Live rooms showed the cost: most of a serial
+turn is a model *writing* section prose that the next seat then reshapes or deletes,
+and consent is a whole-document vote that cannot express "yes to edit 2, no to add 3."
+v3 separates deciding from writing:
+
+**The document is frozen during deliberation.** From the union seed until execution,
+no seat — and not the chair — writes to it. Turns are proposals and votes:
+
+- A **proposal** is executable, in full detail: `add_section(after, heading, text)`,
+  `edit_section(anchor, text)`, `delete_section(anchor)`, `merge_sections(anchors,
+  heading, text)`, each with a reason. Writing cost moves to the proposer of the
+  change, once; a vague proposal ("tighten §pricing") is not a proposal.
+- A **vote** is per-proposal: `agree` | `reject(reason)` | `amend(replacement
+  proposal)`. Amend supersedes the original; the original's proposer votes on the
+  amendment like anyone else. Silence on an outstanding proposal is consent to it.
+- Every turn may propose new changes and must vote on every outstanding proposal.
+
+**Convergence: a full lap with no new proposal and every proposal settled** —
+approved (no reject outstanding) or rejected. Rejected proposals stay on the record
+under their proposer's name; approved ones form the plan. Sealed floor rules apply.
+
+**Execution is a job, not a debate.** The highest-tier seat applies the approved
+proposals as ops, in approved order. Its discretion is bounded: fix anchor
+collisions, reflow the join between adjacent sections, nothing else. Applied ops
+stay attributed to their *proposer*, not the executor. Then one **confirmation
+poll**: consent, or claim the floor for exactly one correction lap. That poll is what
+makes executor drift detectable rather than silent.
+
+**Why it should be faster and better.** A deliberation turn is a short structured act
+— votes plus a proposal — a fraction of the tokens of a writing turn; convergence is
+compositional (per-change consent is a stronger, cleaner signal than per-document
+consent); and prose is written once, for the approved set, instead of written N times
+and deleted N-1. The v2 op log survives as the *executed* stream; the proposal ledger
+sits in front of it. Blame, history, and revert keep working and now point at
+proposals. The v2 settlement poll disappears — the vote *is* the poll.
+
+Risks named: executor drift (mitigated: executable proposals, fold-not-rewrite,
+confirmation poll); same-section conflicts (visible as competing proposals; resolved by
+vote or amend, which is what deliberation is for); proposal inflation (a lap that
+proposes without settling does not converge — the norms and the ledger make that
+visible; phase-5 reputation will price it).
+
 ## 10. Divergence from Karpathy's council, stated once
 
 | | Karpathy / council ecosystem | Conclave v2 |
@@ -182,7 +226,10 @@ Each phase is independently shippable and useful; each has a head-to-head eval h
 4. **Adjudication** — edit-war trigger, adjudicator turn type, contested flags in doc
    + exports. *Kills #5's worst case.*
 5. **Reputation ledger** — §9. *Addresses #7.*
-6. **Eval harness alongside, not after** — same topic + attachments run under
+6. **v3 plan-then-execute** — frozen doc, proposal ledger, per-proposal votes,
+   convergence when settled, executor turn + confirmation poll. Replaces v2's
+   settlement poll. *Speed and per-change consent.*
+7. **Eval harness alongside, not after** — same topic + attachments run under
    `protocol: v1 | v2`, judged blind. The protocol switch on the conversation row is
    the eval harness. No new feature lands without this comparison existing.
 

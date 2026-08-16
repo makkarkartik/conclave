@@ -35,6 +35,7 @@ _ADDITIVE_COLUMNS = (
     "ALTER TABLE messages ADD COLUMN IF NOT EXISTS objection_json TEXT DEFAULT ''",
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS sealed_start BOOLEAN DEFAULT FALSE",
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS floor_queue_json TEXT DEFAULT '[]'",
+    "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS plan_phase VARCHAR(20) DEFAULT 'deliberate'",
 )
 
 

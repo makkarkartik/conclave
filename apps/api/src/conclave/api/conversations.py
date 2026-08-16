@@ -28,9 +28,11 @@ from conclave.domain.files import (
     remove_conversation_dir,
     write_shared_doc,
 )
-from conclave.services.context import load_doc_ops
+from conclave.services.context import load_doc_ops, load_proposals
 from conclave.domain.schemas import (
     AskBody,
+    ProposalOut,
+    ProposalVoteOut,
     ConversationCreate,
     ConversationOut,
     ConversationUpdate,
@@ -117,6 +119,7 @@ async def get_updates(
         lap=conv.lap,
         chair_index=conv.chair_index,
         doc_rev=conv.doc_rev,
+        plan_phase=conv.plan_phase or "deliberate",
         speaking_expert_id=speaking_expert_id(conv),
         messages=[message_out(m) for m in rows],
     )
@@ -394,6 +397,48 @@ async def get_shared_doc(conversation_id: str, db: AsyncSession = Depends(get_db
     return {"content": folded.text, "sections": sections, "ops": ops}
 
 
+@router.get("/{conversation_id}/proposals", response_model=list[ProposalOut])
+async def get_proposals(conversation_id: str, db: AsyncSession = Depends(get_db)):
+    """The proposal ledger (protocol v3): every proposed change, its votes, and its
+    fate — the plan the room deliberates over before touching the document."""
+    conv = await _get_conv(db, conversation_id)
+    props, votes = await load_proposals(db, conv)
+    by_num: dict[int, list] = {}
+    for v in votes:
+        by_num.setdefault(v.proposal_num, []).append(v)
+    out: list[ProposalOut] = []
+    for p in props:
+        pl = p.payload
+        if p.kind == "add_section":
+            target = str(pl.get("heading", ""))
+            text = str(pl.get("text", ""))
+        elif p.kind == "merge_sections":
+            target = "§" + ", §".join(pl.get("anchors") or []) + f' → "{pl.get("heading", "")}"'
+            text = str(pl.get("text", ""))
+        else:
+            target = "§" + str(pl.get("anchor", ""))
+            text = str(pl.get("new_text", ""))
+        out.append(
+            ProposalOut(
+                num=p.num,
+                lap=p.lap,
+                expert=p.expert_name,
+                kind=p.kind,
+                target=target,
+                reason=p.reason,
+                status=p.status,
+                supersedes=p.supersedes,
+                superseded_by=p.superseded_by,
+                votes=[
+                    ProposalVoteOut(expert=v.expert_name, stance=v.stance, reason=v.reason, lap=v.lap)
+                    for v in by_num.get(p.num, [])
+                ],
+                text=text,
+            )
+        )
+    return out
+
+
 @router.put("/{conversation_id}/shared-doc")
 async def put_shared_doc(
     conversation_id: str, body: SharedDocBody, db: AsyncSession = Depends(get_db)
@@ -401,7 +446,7 @@ async def put_shared_doc(
     """A chair edit is an operation like any other: a baseline the chair signs.
     It supersedes prior ops in the fold, so history stays intact behind it."""
     conv = await _get_conv(db, conversation_id)
-    if conv.status == "running":
+    if conv.status in ("running", "drafting", "consulting"):
         raise HTTPException(400, "Pause before editing the shared doc")
     max_seq = await db.scalar(
         select(func.max(DocOp.seq)).where(DocOp.conversation_id == conversation_id)

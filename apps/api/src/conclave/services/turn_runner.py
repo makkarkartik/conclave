@@ -12,12 +12,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from conclave.config import settings
 from conclave.db.ids import new_id
-from conclave.db.models import Attachment, Conversation, DocOp, Expert, Message
+from conclave.db.models import (
+    Attachment,
+    Conversation,
+    DocOp,
+    Expert,
+    Message,
+    Proposal,
+    ProposalVote,
+)
 from conclave.db.session import SessionLocal
 from conclave.domain.converge import lap_settled, min_laps
 from conclave.domain.diff import format_doc_change
 from conclave.domain.docops import available_anchors, fold, seed_ops_from_drafts, slugify
 from conclave.domain.files import write_shared_doc
+from conclave.domain.proposals import compile_plan, settle
 from conclave.domain.schemas import PollAct
 from conclave.runtime.turn import (
     DraftOutcome,
@@ -26,7 +35,14 @@ from conclave.runtime.turn import (
     run_sealed_draft,
     run_settlement_poll,
 )
-from conclave.services.context import build_turn_context, fold_lap_into_summary, load_doc_ops
+from conclave.runtime.providers import model_tier
+from conclave.services.context import (
+    build_turn_context,
+    fold_lap_into_summary,
+    load_doc_ops,
+    load_proposals,
+    seat_names,
+)
 from conclave.services.keys import resolve_api_key
 
 log = logging.getLogger("conclave.runner")
@@ -228,8 +244,12 @@ async def _run_drafting(db, conv: Conversation) -> None:
 
 
 async def _wrap_lap(db, conv: Conversation, chairs: list[str], *, consulting: bool) -> None:
-    """A lap's slots are all filled: fold it, then decide the room's fate —
-    consulting rooms return to converged, quiet laps past the floor settle."""
+    """A lap's slots are all filled: fold it, then decide the room's fate.
+
+    Protocol v3: a deliberating room converges when the ledger is settled (every
+    proposal approved or rejected) and the lap added no new proposal — then it
+    moves to the execute phase. A confirm-phase lap that raised nothing new after
+    execution converges outright. Consulting rooms return to converged."""
     completed_lap = conv.lap
     conv.lap = completed_lap + 1
     conv.floor_queue = []
@@ -260,17 +280,125 @@ async def _wrap_lap(db, conv: Conversation, chairs: list[str], *, consulting: bo
             # The question was binding direction while it was live; a stale one
             # must not command every future turn.
             conv.user_direction = ""
-    elif lap_settled(
+        return
+
+    props, votes = await load_proposals(db, conv)
+    st = settle(props, votes, voters=await seat_names(db, conv))
+    quiet = lap_settled(
         laps_done=conv.lap,
         chair_count=len(chairs),
         turns=turns,
         floor=min_laps(sealed=conv.sealed_start),
-    ):
-        conv.status = "converged"
-        conv.converged_solution = conv.shared_proposal
-        conv.user_direction = ""
+    )
+    if conv.plan_phase == "confirm":
+        # The executed document was put to the room; a quiet lap ratifies it.
+        if quiet:
+            conv.status = "converged"
+            conv.converged_solution = conv.shared_proposal
+            conv.user_direction = ""
+            conv.plan_phase = "deliberate"
+        elif conv.lap >= settings.safety_lap_ceiling:
+            conv.status = "safety_pause"
+        return
+    if quiet and st.settled:
+        if st.approved:
+            conv.plan_phase = "execute"
+        else:
+            # Nothing approved and nothing left open: the frozen document *is*
+            # the answer.
+            conv.status = "converged"
+            conv.converged_solution = conv.shared_proposal
+            conv.user_direction = ""
     elif conv.lap >= settings.safety_lap_ceiling:
         conv.status = "safety_pause"
+
+
+async def _run_execute(db, conv: Conversation, chairs: list[str]) -> None:
+    """Execution is a job, not a debate (v3 §9b): compile the approved plan into
+    ops against the frozen document, in proposal order, each op attributed to its
+    proposer. The executor seat is the highest-tier model — its discretion is
+    zero here (a mechanical fold); it merely lends its slot and name to the act.
+    Then the room enters the confirm phase: one lap over the executed document."""
+    props, votes = await load_proposals(db, conv)
+    voters = await seat_names(db, conv)
+    st = settle(props, votes, voters=voters)
+    ops_before, _ = await load_doc_ops(db, conv)
+    doc_before = fold(ops_before).text if ops_before else ""
+    next_seq = max((o.seq for o in ops_before), default=0) + 1
+    ops, doc_after, skipped = compile_plan(
+        st.approved, doc_text=doc_before, start_seq=next_seq, lap=conv.lap
+    )
+
+    # Executor seat: highest tier, first in chair order on ties.
+    seats: list[tuple[int, Expert]] = []
+    for idx, cid in enumerate(chairs):
+        e = await db.get(Expert, cid)
+        if e is not None:
+            seats.append((idx, e))
+    if not seats:
+        conv.status = "paused"
+        return
+    idx, executor = min(seats, key=lambda t: (model_tier(t[1].model), t[0]))
+
+    msg_id = new_id()
+    for rec in ops:
+        row = DocOp(
+            id=new_id(),
+            tenant_id=conv.tenant_id,
+            conversation_id=conv.id,
+            message_id=msg_id,
+            expert_id=None,
+            expert_name=rec.expert_name,
+            seq=rec.seq,
+            lap=rec.lap,
+            kind=rec.kind,
+            anchor=str(rec.payload.get("anchor") or rec.payload.get("heading") or "")[:200],
+            reason=rec.reason,
+        )
+        row.payload = rec.payload
+        db.add(row)
+    for r in (
+        await db.scalars(select(Proposal).where(Proposal.conversation_id == conv.id))
+    ).all():
+        if any(p.num == r.num for p in st.approved):
+            r.status = "executed" if not any(sp.num == r.num for sp, _ in skipped) else "skipped"
+    if ops:
+        conv.shared_proposal = doc_after
+        write_shared_doc(conv.id, doc_after)
+        conv.doc_rev += 1
+    applied = len(st.approved) - len(skipped)
+    lines = [f"Executed the approved plan: {applied} proposal(s) applied as {len(ops)} operation(s)."]
+    if skipped:
+        lines.append(
+            "Skipped (no longer applicable after earlier changes): "
+            + "; ".join(f"P{sp.num} — {why}" for sp, why in skipped)
+        )
+    msg = Message(
+        id=msg_id,
+        tenant_id=conv.tenant_id,
+        conversation_id=conv.id,
+        expert_id=executor.id,
+        expert_name=executor.name,
+        provider=executor.provider,
+        model=executor.model,
+        lap=conv.lap,
+        chair_index=-2,  # execution is not a turn slot
+        content="\n".join(lines),
+        gist=f"{executor.name} executed the approved plan ({applied} changes)",
+        action="execute",
+        agree=True,
+        doc_diff=format_doc_change(doc_before, doc_after) if ops else "",
+    )
+    msg.chips = ["Executed plan"] + [f"P{p.num}" for p in st.approved]
+    db.add(msg)
+    conv.plan_phase = "confirm"
+    conv.chair_index = 0
+    conv.floor_queue = []
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        log.info("execute collision in %s", conv.id)
 
 
 async def _run_poll(db, conv: Conversation, chairs: list[str]) -> bool:
@@ -350,9 +478,11 @@ async def _run_poll(db, conv: Conversation, chairs: list[str]) -> bool:
     if claimants:
         # Floor goes to claimants in seat order — seats are already ranked
         # strongest-first at room start. Persisted with the consent rows so a
-        # retried claim resumes the queue instead of re-polling.
+        # retried claim resumes the queue instead of re-polling. A claim after
+        # execution reopens deliberation: proposals again, then execute again.
         conv.floor_queue = sorted(claimants)
         conv.chair_index = min(claimants)
+        conv.plan_phase = "deliberate"
     else:
         await _wrap_lap(db, conv, chairs, consulting=False)
     try:
@@ -382,6 +512,9 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 conv.status = "paused"
                 await db.commit()
                 return
+            if conv.plan_phase == "execute" and not consulting:
+                await _run_execute(db, conv, chairs)
+                return
 
             # Slot-based scheduling: a lap is complete when every seat has a
             # message. A fresh lap opens with a parallel settlement poll (running
@@ -405,7 +538,15 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 await db.commit()
                 return
             queue = [i for i in conv.floor_queue if i in missing]
-            if not consulting and not queue and len(missing) == len(chairs):
+            if (
+                not consulting
+                and conv.plan_phase == "confirm"
+                and not queue
+                and len(missing) == len(chairs)
+            ):
+                # Confirm phase: the executed document goes to the room as one
+                # parallel poll — consent ratifies, a floor claim opens one
+                # correction lap of proposals.
                 errored = await _run_poll(db, conv, chairs)
                 return
 
@@ -435,7 +576,7 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 await db.commit()
                 return
 
-            context = await build_turn_context(db, conv)
+            context = (await build_turn_context(db, conv)).ledger_for(expert.name)
             try:
                 outcome = await run_expert_turn(
                     name=expert.name,
@@ -458,52 +599,87 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
             act = outcome.act
             chips = list(outcome.tool_chips)
             content = act.message or ""
-            doc_diff = ""
 
             if act.action == "forfeit":
                 content = content or "Passed — listening."
                 chips.append("Passed")
 
             msg_id = new_id()
-            staged = list(outcome.staged_ops)
-            if staged and outcome.doc_after is not None:
-                # Persist the turn's document operations atomically with the message.
-                # For a pre-op-log room the synthesized baseline is the first row,
-                # so the fold reproduces the v1 text before the new ops apply.
-                if context.baseline_synthesized:
-                    staged = context.doc_ops + staged
-                before_doc = context.shared_doc
-                for rec in staged:
-                    row = DocOp(
+            # Protocol v3: the document is frozen; the turn persists proposals and
+            # votes atomically with the message. Nothing touches doc_ops here.
+            staged = list(outcome.staged_proposals)
+            existing_props, existing_votes = context.proposals, context.votes
+            live_nums = {p.num for p in existing_props if p.status == "open"} | {
+                p.num for p in staged
+            }
+            for rec in staged:
+                row = Proposal(
+                    id=new_id(),
+                    tenant_id=conv.tenant_id,
+                    conversation_id=conv.id,
+                    message_id=msg_id,
+                    expert_id=expert.id,
+                    expert_name=rec.expert_name,
+                    num=rec.num,
+                    lap=rec.lap,
+                    kind=rec.kind,
+                    reason=rec.reason,
+                    status="open",
+                    supersedes=rec.supersedes,
+                )
+                row.payload = rec.payload
+                db.add(row)
+                if rec.supersedes is not None:
+                    prev = await db.scalar(
+                        select(Proposal).where(
+                            Proposal.conversation_id == conv.id, Proposal.num == rec.supersedes
+                        )
+                    )
+                    if prev is not None and prev.status == "open":
+                        prev.status = "superseded"
+                        prev.superseded_by = rec.num
+            already = {(v.proposal_num, v.expert_name) for v in existing_votes}
+            own = {p.num for p in existing_props + staged if p.expert_name == expert.name}
+            rejected_any = False
+            for v in act.votes:
+                if v.proposal not in live_nums or v.proposal in own:
+                    continue  # unknown, settled, or one's own proposal
+                if (v.proposal, expert.name) in already:
+                    continue
+                stance = v.stance if v.stance in ("agree", "reject") else "agree"
+                if stance == "reject":
+                    rejected_any = True
+                db.add(
+                    ProposalVote(
                         id=new_id(),
                         tenant_id=conv.tenant_id,
                         conversation_id=conv.id,
-                        message_id=None if rec.kind == "baseline" else msg_id,
-                        expert_id=None if rec.kind == "baseline" else expert.id,
-                        expert_name=rec.expert_name,
-                        seq=rec.seq,
-                        lap=rec.lap,
-                        kind=rec.kind,
-                        anchor=str(
-                            rec.payload.get("anchor") or rec.payload.get("heading") or ""
-                        )[:200],
-                        reason=rec.reason,
+                        message_id=msg_id,
+                        proposal_num=v.proposal,
+                        expert_name=expert.name,
+                        stance=stance,
+                        reason=(v.reason or "")[:500],
+                        lap=conv.lap,
                     )
-                    row.payload = rec.payload
-                    db.add(row)
-                conv.shared_proposal = outcome.doc_after
-                write_shared_doc(conv.id, outcome.doc_after)
-                doc_diff = format_doc_change(before_doc, outcome.doc_after)
-                conv.doc_rev += 1
-                content = content or "Updated the shared document."
+                )
+                already.add((v.proposal, expert.name))
+            if act.votes:
+                agrees = sum(1 for v in act.votes if v.stance == "agree")
+                rejects = sum(1 for v in act.votes if v.stance == "reject")
+                chips.append(
+                    "Voted: " + ", ".join(
+                        s for s in (f"{agrees} agree" if agrees else "", f"{rejects} reject" if rejects else "") if s
+                    )
+                )
 
             forfeit = act.action == "forfeit"
             objection = act.blocking_objection
             if objection is not None:
                 target = f" §{objection.anchor}" if objection.anchor else ""
                 chips.append(f"Blocking objection{target}")
-            # v2: a turn that stakes nothing — no op, no objection — consents.
-            staked = bool(staged) or objection is not None
+            # v3: a turn that stakes nothing — no proposal, no reject, no objection
+            # — consents to the plan as it stands.
+            staked = bool(staged) or rejected_any or objection is not None
             msg = Message(
                 id=msg_id,
                 tenant_id=conv.tenant_id,
@@ -519,7 +695,7 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 gist=(act.gist or "")[:300],
                 action=act.action,
                 agree=not forfeit and not staked,
-                doc_diff=doc_diff,
+                doc_diff="",
             )
             msg.objection = objection.model_dump() if objection is not None else None
             msg.chips = chips

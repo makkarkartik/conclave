@@ -160,26 +160,33 @@ def test_fold_starts_from_last_active_baseline():
     assert "Rollback" not in r.text
 
 
-async def test_doctools_sanitizes_echoed_annotations():
-    """A model that copies the prompt's annotated heading line into an edit must not
-    mint a doubled anchor (slugify('Bottom line {#bottom-line}') != 'bottom-line')."""
-    from conclave.runtime.turn import DocTools
+async def test_proposal_tools_sanitize_echoed_annotations():
+    """A model that copies the prompt's annotated heading line into a proposal must
+    not mint a doubled anchor (slugify('Bottom line {#bottom-line}') != 'bottom-line'),
+    and a proposal against a missing anchor is refused at the door."""
+    from conclave.domain.proposals import compile_plan
+    from conclave.runtime.turn import ProposalTools
 
-    dt = DocTools([], expert_name="Ada", lap=0)
-    await dt.execute(
-        "add_section", {"heading": "Bottom line", "text": "v1", "reason": "seed"}
-    )
-    out = await dt.execute(
-        "edit_section",
+    doc = "## Bottom line\n\nv1\n"
+    pt = ProposalTools(doc_text=doc, existing=[], expert_name="Ada", lap=1)
+    out = await pt.execute(
+        "propose_edit_section",
         {
             "anchor": "{#bottom-line}",
             "new_text": "## Bottom line  {#bottom-line}\n\nv2",
             "reason": "revise",
         },
     )
-    assert out.startswith("Applied")
-    assert available_anchors(dt.doc_text) == ["bottom-line"]
-    assert "v2" in dt.doc_text and "{#" not in dt.doc_text
+    assert out.startswith("Staged as P1"), out
+    assert pt.staged[0].payload["anchor"] == "bottom-line"
+    assert "{#" not in pt.staged[0].payload["new_text"]
+    ops, text, skipped = compile_plan(pt.staged, doc_text=doc, start_seq=1, lap=2)
+    assert not skipped and available_anchors(text) == ["bottom-line"] and "v2" in text
+    # A broken proposal never enters the ledger.
+    bad = await pt.execute(
+        "propose_delete_section", {"anchor": "nope", "reason": "x"}
+    )
+    assert bad.startswith("Not staged") and len(pt.staged) == 1
 
 
 def test_seed_union_keeps_every_draft_and_suffixes_collisions():

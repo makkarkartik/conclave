@@ -1,4 +1,4 @@
-import { FileText, Globe, ListChecks, Loader2, Paperclip, Pause, Play, X } from 'lucide-react'
+import { ClipboardList, FileText, Globe, ListChecks, Loader2, Paperclip, Pause, Play, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
 import type { Attachment, Conversation, Expert } from '../../shared/lib/api'
@@ -23,6 +23,7 @@ export function RoomHeader({
   onRemoveAttachment,
   onToggleWebSearch,
   onOpenDoc,
+  onOpenPlan,
   onOpenLog,
   onPause,
   onStartOrResume,
@@ -36,6 +37,7 @@ export function RoomHeader({
   onRemoveAttachment: (attachmentId: string) => void
   onToggleWebSearch: () => void
   onOpenDoc: () => void
+  onOpenPlan: () => void
   onOpenLog: () => void
   onPause: () => void
   onStartOrResume: () => void
@@ -67,7 +69,13 @@ export function RoomHeader({
                 ? `${expertMap[speakingId].name} speaking`
                 : active.status === 'drafting'
                   ? 'sealed drafts in progress — experts are working blind, in parallel'
-                  : active.status}
+                  : active.status === 'running' && active.plan_phase === 'execute'
+                    ? 'plan approved — executing the changes'
+                    : active.status === 'running' && active.plan_phase === 'confirm'
+                      ? 'plan executed — room confirming the result'
+                      : active.status === 'running'
+                        ? 'deliberating the plan — document frozen'
+                        : active.status}
               {active.lap > 0 ? ` · lap ${active.lap}` : ''}
             </span>
             {(active.attachments.length > 0 || attaching) && (
@@ -129,6 +137,19 @@ export function RoomHeader({
             className="flex items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 py-2 text-xs text-[var(--color-think)] hover:bg-white/5"
           >
             <FileText size={14} /> Shared doc
+          </button>
+          <button
+            type="button"
+            onClick={onOpenPlan}
+            title="The plan under deliberation: proposed changes, votes, and what will execute"
+            className={clsx(
+              'flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition',
+              active.status === 'running' && active.plan_phase !== 'deliberate'
+                ? 'border-[#50c878]/40 bg-[rgba(80,200,120,0.10)] text-[#9ddeb5]'
+                : 'border-[var(--color-line)] text-[var(--color-think)] hover:bg-white/5',
+            )}
+          >
+            <ClipboardList size={14} /> Plan
           </button>
           <button
             type="button"

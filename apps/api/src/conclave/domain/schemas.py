@@ -120,12 +120,34 @@ class ConversationOut(BaseModel):
     doc_rev: int
     web_search: bool = False
     sealed_start: bool = False
+    plan_phase: str = "deliberate"
     created_at: datetime
     updated_at: datetime
     messages: list[MessageOut] = Field(default_factory=list)
     attachments: list[AttachmentOut] = Field(default_factory=list)
     shared_doc: str = ""
     speaking_expert_id: str | None = None
+
+
+class ProposalVoteOut(BaseModel):
+    expert: str
+    stance: str
+    reason: str = ""
+    lap: int = 0
+
+
+class ProposalOut(BaseModel):
+    num: int
+    lap: int
+    expert: str
+    kind: str
+    target: str
+    reason: str
+    status: str
+    supersedes: int | None = None
+    superseded_by: int | None = None
+    votes: list[ProposalVoteOut] = Field(default_factory=list)
+    text: str = ""
 
 
 class ConversationUpdates(BaseModel):
@@ -135,6 +157,7 @@ class ConversationUpdates(BaseModel):
     lap: int
     chair_index: int
     doc_rev: int
+    plan_phase: str = "deliberate"
     speaking_expert_id: str | None
     messages: list[MessageOut] = Field(default_factory=list)
 
@@ -170,6 +193,15 @@ class Objection(BaseModel):
     )
 
 
+class Vote(BaseModel):
+    """A vote on an outstanding proposal (protocol v3). Rejecting is a staked act:
+    it needs a reason and it lands on the record under your name."""
+
+    proposal: int = Field(description="The proposal number, e.g. 3 for P3")
+    stance: Literal["agree", "reject"]
+    reason: str = Field("", description="Required for reject: what is wrong, one line")
+
+
 class PollAct(BaseModel):
     """Settlement-poll response: consent to the document as it stands, or claim
     the floor for a real turn. Polls run in parallel — consent costs the room no
@@ -187,17 +219,17 @@ class PollAct(BaseModel):
 class TurnAct(BaseModel):
     """The one terminal tool of every expert turn: the expert's final act on the floor.
 
-    Document changes happen through the section tools (add_section, edit_section,
-    delete_section, revert_edit) before this call — they apply immediately and are
-    committed with the turn. Reading attachments (and, later, MCP connectors) are
-    ordinary tools too. TurnAct ends the turn.
+    Protocol v3: the shared document is FROZEN during deliberation. You change it by
+    proposing — via the propose_* tools before this call — and the room changes it by
+    executing the approved plan once, at the end. Reading attachments (and, later,
+    MCP connectors) are ordinary tools too. TurnAct ends the turn.
 
-    Consent by silence: a turn that neither operated on the document nor stakes a
-    blocking_objection consents to the document as it stands. The room converges
-    when a full lap passes with no operation and no objection.
+    Every turn must vote on every open proposal it has not yet voted on (silence
+    would be consent). Rejecting needs a reason. A turn that neither proposes nor
+    rejects anything consents to the plan as it stands.
     """
 
-    thought: str = Field("", description="Private reasoning; longer than the spoken message is fine")
+    thought: str = Field("", description="Private reasoning; keep it brief")
     action: Literal["speak", "forfeit"] = "speak"
     message: str = Field("", description="What you say to the room, 2-5 sentences")
     gist: str = Field(
@@ -207,11 +239,15 @@ class TurnAct(BaseModel):
             "this turn. Becomes the room's permanent ledger."
         ),
     )
+    votes: list[Vote] = Field(
+        default_factory=list,
+        description="Your vote on each open proposal you have not voted on yet",
+    )
     blocking_objection: Objection | None = Field(
         None,
         description=(
-            "Stake this ONLY for a defect that genuinely blocks the document. It keeps the "
-            "room open and is scored on the record. Polish is not blocking — fix it with an "
-            "operation or let it go."
+            "Stake this ONLY for a defect no proposal addresses and that genuinely blocks "
+            "the document. Prefer proposing the fix. It keeps the room open and is scored "
+            "on the record."
         ),
     )

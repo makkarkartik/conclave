@@ -65,12 +65,29 @@ export type Conversation = {
   doc_rev: number
   web_search: boolean
   sealed_start: boolean
+  plan_phase: 'deliberate' | 'execute' | 'confirm'
   created_at: string
   updated_at: string
   messages: Message[]
   attachments: Attachment[]
   shared_doc: string
   speaking_expert_id: string | null
+}
+
+export type ProposalVote = { expert: string; stance: 'agree' | 'reject'; reason: string; lap: number }
+
+export type Proposal = {
+  num: number
+  lap: number
+  expert: string
+  kind: 'add_section' | 'edit_section' | 'delete_section' | 'merge_sections'
+  target: string
+  reason: string
+  status: 'open' | 'approved' | 'rejected' | 'superseded' | 'executed' | 'skipped'
+  supersedes: number | null
+  superseded_by: number | null
+  votes: ProposalVote[]
+  text: string
 }
 
 export type DocSection = {
@@ -97,6 +114,7 @@ export type ConversationUpdates = {
   lap: number
   chair_index: number
   doc_rev: number
+  plan_phase: 'deliberate' | 'execute' | 'confirm'
   speaking_expert_id: string | null
   messages: Message[]
 }
@@ -203,6 +221,7 @@ export const api = {
   },
   deleteAttachment: (id: string, attachmentId: string) =>
     req<{ ok: boolean }>(`/conversations/${id}/files/${attachmentId}`, { method: 'DELETE' }),
+  getProposals: (id: string) => req<Proposal[]>(`/conversations/${id}/proposals`),
   getSharedDoc: (id: string) =>
     req<{ content: string; sections: DocSection[]; ops: DocOpRow[] }>(
       `/conversations/${id}/shared-doc`,

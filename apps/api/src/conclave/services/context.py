@@ -6,10 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from conclave.config import settings
-from conclave.db.models import Attachment, Conversation, DocOp, Message
+from conclave.db.models import Attachment, Conversation, DocOp, Message, Proposal, ProposalVote
 from conclave.domain.diff import is_stub_doc
 from conclave.domain.docops import OpRecord, annotate_anchors, blame_lines, fold, ops_log_lines
 from conclave.domain.files import read_shared_doc
+from conclave.domain.proposals import ProposalRecord, VoteRecord, ledger_lines
 
 # Simple char cap on the rolling summary; oldest lap digests fall off first.
 # TODO(compaction): replace the tail-trim with LLM compaction of old laps when
@@ -38,6 +39,24 @@ class TurnContext:
     doc_annotated: str = ""
     doc_blame: str = ""
     doc_ops_log: str = ""
+    # Protocol v3: the proposal ledger the turn votes over. `proposal_ledger` is
+    # rendered per seat (it flags what that seat still owes a vote on) — see
+    # ledger_for().
+    proposals: list[ProposalRecord] = field(default_factory=list)
+    votes: list[VoteRecord] = field(default_factory=list)
+    voters: list[str] = field(default_factory=list)
+    proposal_ledger: str = ""
+
+    def ledger_for(self, expert_name: str) -> "TurnContext":
+        """A copy of this context with the ledger rendered for one seat."""
+        import dataclasses
+
+        return dataclasses.replace(
+            self,
+            proposal_ledger=ledger_lines(
+                self.proposals, self.votes, voters=self.voters, for_expert=expert_name
+            ),
+        )
 
     @property
     def attachments_blurb(self) -> str:
@@ -83,6 +102,9 @@ async def build_turn_context(db: AsyncSession, conv: Conversation) -> TurnContex
     # and the prompt says so — the stub placeholder is not part of the artifact.
     doc_text = folded.text if ops else ""
 
+    proposals, votes = await load_proposals(db, conv)
+    voters = await seat_names(db, conv)
+
     return TurnContext(
         rolling_summary=conv.rolling_summary or "",
         gist_ledger=ledger,
@@ -95,7 +117,65 @@ async def build_turn_context(db: AsyncSession, conv: Conversation) -> TurnContex
         doc_annotated=annotate_anchors(doc_text),
         doc_blame=blame_lines(folded),
         doc_ops_log=ops_log_lines(ops),
+        proposals=proposals,
+        votes=votes,
+        voters=voters,
+        proposal_ledger=ledger_lines(proposals, votes, voters=voters),
     )
+
+
+async def seat_names(db: AsyncSession, conv: Conversation) -> list[str]:
+    from conclave.db.models import Expert
+
+    names: list[str] = []
+    for cid in conv.chair_ids:
+        e = await db.get(Expert, cid)
+        if e is not None:
+            names.append(e.name)
+    return names
+
+
+async def load_proposals(
+    db: AsyncSession, conv: Conversation
+) -> tuple[list[ProposalRecord], list[VoteRecord]]:
+    """The room's proposal ledger as domain records, in proposal order."""
+    rows = (
+        await db.scalars(
+            select(Proposal).where(Proposal.conversation_id == conv.id).order_by(Proposal.num)
+        )
+    ).all()
+    props = [
+        ProposalRecord(
+            num=r.num,
+            kind=r.kind,
+            payload=r.payload,
+            reason=r.reason,
+            expert_name=r.expert_name,
+            lap=r.lap,
+            status=r.status,
+            supersedes=r.supersedes,
+            superseded_by=r.superseded_by,
+        )
+        for r in rows
+    ]
+    vrows = (
+        await db.scalars(
+            select(ProposalVote)
+            .where(ProposalVote.conversation_id == conv.id)
+            .order_by(ProposalVote.created_at, ProposalVote.id)
+        )
+    ).all()
+    votes = [
+        VoteRecord(
+            proposal_num=v.proposal_num,
+            expert_name=v.expert_name,
+            stance=v.stance,
+            reason=v.reason,
+            lap=v.lap,
+        )
+        for v in vrows
+    ]
+    return props, votes
 
 
 async def load_doc_ops(db: AsyncSession, conv: Conversation) -> tuple[list[OpRecord], bool]:

@@ -44,7 +44,8 @@ export default function App() {
               attaching={app.attaching}
               onRemoveAttachment={app.onRemoveAttachment}
               onToggleWebSearch={app.onToggleWebSearch}
-              onOpenDoc={() => app.setShowDoc(true)}
+              onOpenDoc={() => app.openDoc('doc')}
+              onOpenPlan={() => app.openDoc('plan')}
               onOpenLog={() => app.setShowLog(true)}
               onPause={() => app.setShowPause(true)}
               onStartOrResume={
@@ -118,6 +119,10 @@ export default function App() {
           fallback={app.active.converged_solution || app.active.shared_proposal}
           docRev={app.active.doc_rev}
           experts={app.experts}
+          seatNames={app.roomExperts.map((e) => e.name)}
+          planPhase={app.active.plan_phase}
+          messageCount={app.messages.length}
+          initialTab={app.docTab}
           editable={!['running', 'drafting'].includes(app.active.status)}
           onClose={() => app.setShowDoc(false)}
           onSave={app.onSaveDoc}

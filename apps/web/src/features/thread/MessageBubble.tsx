@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, ChevronDown, FileDiff, Globe, HelpCircle, Minus, PenLine, X } from 'lucide-react'
+import { Check, ChevronDown, FileDiff, Globe, HelpCircle, Minus, PenLine, Play, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
 import type { Expert, Message } from '../../shared/lib/api'
@@ -17,8 +17,8 @@ function StanceBadge({ message }: { message: Message }) {
           ? 'backs'
           : 'objects'
   const style = {
-    backs: { bg: 'bg-[#50c878]', label: 'consents to the document', Icon: Check },
-    objects: { bg: 'bg-[var(--color-coral)]', label: 'staked a change', Icon: X },
+    backs: { bg: 'bg-[#50c878]', label: 'consents to the plan', Icon: Check },
+    objects: { bg: 'bg-[var(--color-coral)]', label: 'proposed or rejected a change', Icon: X },
     passed: { bg: 'bg-[var(--color-pass)]', label: 'passed', Icon: Minus },
     drafted: { bg: 'bg-[var(--color-sky)]', label: 'drafted independently, sealed', Icon: PenLine },
   }[stance]
@@ -97,6 +97,47 @@ export function MessageBubble({
   expert?: Expert
   highlighted: boolean
 }) {
+  // Execution of the approved plan (protocol v3): the one moment the document
+  // changes. A distinct event on the rail — the plan becoming the artifact.
+  if (message.action === 'execute') {
+    return (
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3">
+        <div className="flex w-9 shrink-0 justify-center pt-1">
+          <span className="relative z-[1] flex h-6 w-6 items-center justify-center rounded-full border border-[#9ddeb5]/50 bg-[var(--color-panel)]">
+            <Play size={11} className="text-[#9ddeb5]" />
+          </span>
+        </div>
+        <div className="min-w-0 flex-1 rounded-2xl border border-[#50c878]/25 bg-[rgba(80,200,120,0.06)] p-4">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-[10px] font-semibold tracking-wide text-[#9ddeb5] uppercase">
+              Plan executed
+            </span>
+            <span className="text-[11px] text-[var(--color-pass)]">
+              by {message.expert_name}
+              {message.model ? ` · ${message.model}` : ''}
+            </span>
+          </div>
+          <div className="text-[13px] leading-relaxed whitespace-pre-wrap text-[var(--color-speak)]">
+            {message.content}
+          </div>
+          {message.doc_diff?.trim() ? <DiffBlock diff={message.doc_diff} /> : null}
+          {message.chips?.length > 1 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {message.chips.slice(1).map((c) => (
+                <span
+                  key={c}
+                  className="rounded-full bg-[rgba(80,200,120,0.14)] px-2 py-0.5 text-[10px] text-[#9ddeb5]"
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    )
+  }
+
   // Consent from a settlement poll: a slim timeline row, not a bubble — four of
   // these landing at once is the room settling, and it should read that way.
   if (message.action === 'consent') {

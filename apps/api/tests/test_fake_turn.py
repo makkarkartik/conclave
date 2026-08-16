@@ -33,10 +33,10 @@ async def test_fake_provider_completes_a_turn(monkeypatch):
     assert outcome.act.action == "speak"
     assert outcome.act.blocking_objection is None
     assert outcome.act.gist
-    # The fake seeds an empty document with one section op.
-    assert [op.kind for op in outcome.staged_ops] == ["add_section"]
-    assert "Ship the canary?" in (outcome.doc_after or "")
-    assert "**Decision**" in (outcome.doc_after or "")
+    # v3: the fake PROPOSES the plan section; the document itself is untouched.
+    assert [p.kind for p in outcome.staged_proposals] == ["add_section"]
+    payload = outcome.staged_proposals[0].payload
+    assert "Ship the canary?" in payload["heading"] and "**Decision**" in payload["text"]
 
 
 async def test_fake_provider_gated_by_flag(monkeypatch):
