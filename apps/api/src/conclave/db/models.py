@@ -92,6 +92,9 @@ class Conversation(Base):
     chair_index: Mapped[int] = mapped_column(Integer, default=0)
     doc_rev: Mapped[int] = mapped_column(Integer, default=0)
     web_search: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Set while answering a follow-up: the room runs until this lap, then goes
+    # back to converged without touching the solution.
+    consult_until_lap: Mapped[int | None] = mapped_column(Integer, nullable=True)
     claimed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     claimed_by: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

@@ -143,6 +143,12 @@ export const api = {
   deleteConversation: (id: string) =>
     req<{ ok: boolean }>(`/conversations/${id}`, { method: 'DELETE' }),
   start: (id: string) => req<Conversation>(`/conversations/${id}/start`, { method: 'POST' }),
+  ask: (id: string, question: string, reopen = false) =>
+    req<Conversation>(`/conversations/${id}/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, reopen }),
+    }),
   pause: (id: string, direction = '') =>
     req<Conversation>(`/conversations/${id}/pause`, {
       method: 'POST',

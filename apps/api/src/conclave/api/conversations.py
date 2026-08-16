@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from conclave.api.serializers import conversation_out, message_out, speaking_expert_id
 from conclave.db.ids import new_id
-from conclave.db.models import DEFAULT_TENANT_ID, Attachment, Conversation, Message
+from conclave.db.models import DEFAULT_TENANT_ID, Attachment, Conversation, Message  # noqa: F401
 from conclave.db.session import get_db
 from conclave.domain.files import (
     ALLOWED_SUFFIXES,
@@ -22,6 +22,7 @@ from conclave.domain.files import (
     write_shared_doc,
 )
 from conclave.domain.schemas import (
+    AskBody,
     ConversationCreate,
     ConversationOut,
     ConversationUpdate,
@@ -190,6 +191,53 @@ async def resume(conversation_id: str, body: PauseBody, db: AsyncSession = Depen
     # Clear any leftover lease (incl. error backoff) so resume takes effect now
     conv.claimed_until = None
     conv.claimed_by = None
+    await db.commit()
+    return conversation_out(conv)
+
+
+@router.post("/{conversation_id}/ask", response_model=ConversationOut)
+async def ask(conversation_id: str, body: AskBody, db: AsyncSession = Depends(get_db)):
+    """Put a follow-up question to a room that has already concluded.
+
+    A converged room is otherwise inert — the runner only claims rooms that are
+    running — so this is what carries a finished deliberation forward.
+    """
+    conv = await _get_conv(db, conversation_id, full=True)
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(400, "Question required")
+    if conv.status not in ("converged", "paused", "safety_pause", "error_pause"):
+        raise HTTPException(400, "Ask a follow-up once the room has stopped")
+    if conv.consult_until_lap is not None:
+        raise HTTPException(400, "The room is still answering the previous question")
+
+    db.add(
+        Message(
+            id=new_id(),
+            tenant_id=conv.tenant_id,
+            conversation_id=conv.id,
+            expert_id=None,
+            expert_name="You",
+            lap=conv.lap,
+            chair_index=-1,  # outside the rotation, so it never takes a turn slot
+            content=question,
+            gist=f"Chair asked: {question[:140]}",
+            action="ask",
+        )
+    )
+
+    conv.user_direction = question
+    conv.chair_index = 0
+    conv.claimed_until = None
+    conv.claimed_by = None
+    if body.reopen:
+        # Full deliberation: convergence must be re-earned. No floor reset is
+        # needed — re-convergence still requires identical proposals across a lap.
+        conv.status = "running"
+        conv.consult_until_lap = None
+    else:
+        conv.status = "consulting"
+        conv.consult_until_lap = conv.lap + 1
     await db.commit()
     return conversation_out(conv)
 

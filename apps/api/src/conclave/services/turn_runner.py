@@ -38,7 +38,7 @@ async def claim_next(db: AsyncSession, worker_id: str) -> str | None:
     conv = await db.scalar(
         select(Conversation)
         .where(
-            Conversation.status == "running",
+            Conversation.status.in_(("running", "consulting")),
             or_(Conversation.claimed_until.is_(None), Conversation.claimed_until < _now()),
         )
         .order_by(Conversation.updated_at.asc())
@@ -103,8 +103,9 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
     try:
         async with SessionLocal() as db:
             conv = await db.get(Conversation, conversation_id)
-            if conv is None or conv.status != "running":
+            if conv is None or conv.status not in ("running", "consulting"):
                 return
+            consulting = conv.status == "consulting"
 
             chairs = conv.chair_ids
             if not chairs:
@@ -132,6 +133,7 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                     lap=conv.lap,
                     context=context,
                     web_search=conv.web_search,
+                    consulting=consulting,
                 )
             except Exception as exc:  # noqa: BLE001 — provider/tool errors become a pass
                 log.warning("turn failed in %s: %s", conversation_id, exc)
@@ -215,13 +217,20 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                     }
                     for m in lap_msgs
                 ]
-                if lap_converged(laps_done=conv.lap, chair_count=len(chairs), turns=turns):
+                if consulting:
+                    # A follow-up is answered, not re-deliberated: the experts
+                    # respond for one lap and the room returns to converged with
+                    # its solution untouched.
+                    if conv.consult_until_lap is None or conv.lap >= conv.consult_until_lap:
+                        conv.status = "converged"
+                        conv.consult_until_lap = None
+                elif lap_converged(laps_done=conv.lap, chair_count=len(chairs), turns=turns):
                     conv.status = "converged"
                     conv.converged_solution = conv.shared_proposal
                 elif conv.lap >= settings.safety_lap_ceiling:
                     conv.status = "safety_pause"
 
-            if errored and conv.status == "running":
+            if errored and conv.status in ("running", "consulting"):
                 # A persistently failing room (dead key, provider outage) must not
                 # burn laps to the safety ceiling: pause it after N straight errors.
                 await db.flush()

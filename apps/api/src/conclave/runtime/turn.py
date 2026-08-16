@@ -57,6 +57,18 @@ How your turn works:
   permanent ledger of who did what.
 """
 
+CONSULTING = """
+THE ROOM HAS ALREADY CONVERGED. The chair has asked a follow-up question — it is
+the last entry in the recent turns, and the converged solution is the shared
+proposal below.
+
+Answer the question directly and concretely, grounded in the solution and the
+record. This is consultation, not renegotiation: prefer `speak`. Do not rewrite
+the proposal unless the question exposes something that makes the solution wrong
+— and if it does, say plainly what changed and why. If the honest answer is that
+the record cannot settle it, say that instead of speculating.
+"""
+
 CHAIR_DIRECTION = """
 BINDING CHAIR DIRECTION — this overrides conflicting norms above for this turn:
 {direction}
@@ -164,6 +176,7 @@ async def run_expert_turn(
     lap: int,
     context: TurnContext,
     web_search: bool = False,
+    consulting: bool = False,
     tool_providers: list[ToolProvider] | None = None,
     llm: Any | None = None,
 ) -> TurnOutcome:
@@ -191,6 +204,8 @@ async def run_expert_turn(
         name=name,
         persona=persona or "Rigorous specialist who challenges weak reasoning, then synthesizes",
     )
+    if consulting:
+        system += "\n" + CONSULTING
     if direction:
         system += "\n" + CHAIR_DIRECTION.format(direction=direction)
 

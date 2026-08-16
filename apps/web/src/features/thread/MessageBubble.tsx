@@ -67,6 +67,22 @@ export function MessageBubble({
   expert?: Expert
   highlighted: boolean
 }) {
+  // The chair's own follow-up: a question put to the room, not a turn taken in it.
+  if (message.action === 'ask') {
+    return (
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
+        <div className="max-w-[80%] rounded-2xl rounded-br-md border border-[var(--color-sky)]/30 bg-[rgba(107,163,255,0.12)] px-4 py-3">
+          <div className="mb-1 text-[10px] font-semibold tracking-wide text-[var(--color-sky)] uppercase">
+            Your question
+          </div>
+          <div className="text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--color-speak)]">
+            {message.content}
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}

@@ -137,6 +137,13 @@ class PauseBody(BaseModel):
     direction: str = ""
 
 
+class AskBody(BaseModel):
+    question: str
+    # False: one lap of answers, the converged solution is left alone.
+    # True: deliberation resumes and convergence has to be earned again.
+    reopen: bool = False
+
+
 class SharedDocBody(BaseModel):
     content: str
 

@@ -196,6 +196,18 @@ export function useConclaveApp() {
     }
   }
 
+  async function onAsk(question: string, reopen = false) {
+    if (!activeId) return
+    setError(null)
+    try {
+      setActive(await api.ask(activeId, question, reopen))
+      await refreshLists()
+    } catch (e) {
+      setError(String(e).replace(/^Error:\s*/, ''))
+      throw e
+    }
+  }
+
   async function onToggleWebSearch() {
     if (!activeId || !active) return
     setError(null)
@@ -275,6 +287,7 @@ export function useConclaveApp() {
     onAttach,
     onRemoveAttachment,
     onToggleWebSearch,
+    onAsk,
     onSaveDoc,
   }
 }

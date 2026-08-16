@@ -8,6 +8,7 @@ import { RoomHeader } from './features/conversations/RoomHeader'
 import { PauseModal } from './features/conversations/PauseModal'
 import { Thread } from './features/thread/Thread'
 import { SolutionCard } from './features/thread/SolutionCard'
+import { FollowUp } from './features/thread/FollowUp'
 import { DocDrawer } from './features/files/DocDrawer'
 
 export default function App() {
@@ -62,6 +63,7 @@ export default function App() {
               roomExperts={app.roomExperts}
               messages={app.messages}
             />
+            <FollowUp active={app.active} onAsk={app.onAsk} />
           </>
         )}
       </main>
