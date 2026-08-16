@@ -86,6 +86,7 @@ class MessageOut(BaseModel):
     content: str
     gist: str
     action: str
+    agree: bool = False
     chips: list[str]
     citations: list[dict] = Field(default_factory=list)
     doc_diff: str = ""

@@ -9,6 +9,7 @@ import { PauseModal } from './features/conversations/PauseModal'
 import { Thread } from './features/thread/Thread'
 import { SolutionCard } from './features/thread/SolutionCard'
 import { FollowUp } from './features/thread/FollowUp'
+import { DecisionLog } from './features/thread/DecisionLog'
 import { DocDrawer } from './features/files/DocDrawer'
 
 export default function App() {
@@ -44,6 +45,7 @@ export default function App() {
               onRemoveAttachment={app.onRemoveAttachment}
               onToggleWebSearch={app.onToggleWebSearch}
               onOpenDoc={() => app.setShowDoc(true)}
+              onOpenLog={() => app.setShowLog(true)}
               onPause={() => app.setShowPause(true)}
               onStartOrResume={
                 ['paused', 'safety_pause', 'error_pause'].includes(app.active.status)
@@ -99,6 +101,14 @@ export default function App() {
             await app.refreshLists()
             await app.loadConversation(id)
           }}
+        />
+      )}
+      {app.showLog && app.active && (
+        <DecisionLog
+          messages={app.messages}
+          roomExperts={app.roomExperts}
+          expertMap={app.expertMap}
+          onClose={() => app.setShowLog(false)}
         />
       )}
       {app.showDoc && app.active && (

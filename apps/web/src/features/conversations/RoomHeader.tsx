@@ -1,4 +1,4 @@
-import { FileText, Globe, Loader2, Paperclip, Pause, Play, X } from 'lucide-react'
+import { FileText, Globe, ListChecks, Loader2, Paperclip, Pause, Play, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
 import type { Attachment, Conversation, Expert } from '../../shared/lib/api'
@@ -23,6 +23,7 @@ export function RoomHeader({
   onRemoveAttachment,
   onToggleWebSearch,
   onOpenDoc,
+  onOpenLog,
   onPause,
   onStartOrResume,
 }: {
@@ -35,6 +36,7 @@ export function RoomHeader({
   onRemoveAttachment: (attachmentId: string) => void
   onToggleWebSearch: () => void
   onOpenDoc: () => void
+  onOpenLog: () => void
   onPause: () => void
   onStartOrResume: () => void
 }) {
@@ -125,6 +127,14 @@ export function RoomHeader({
             className="flex items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 py-2 text-xs text-[var(--color-think)] hover:bg-white/5"
           >
             <FileText size={14} /> Shared doc
+          </button>
+          <button
+            type="button"
+            onClick={onOpenLog}
+            title="Who stands where, lap by lap, and every document decision"
+            className="flex items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 py-2 text-xs text-[var(--color-think)] hover:bg-white/5"
+          >
+            <ListChecks size={14} /> Decisions
           </button>
           <label
             className={clsx(

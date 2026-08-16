@@ -15,7 +15,10 @@ from conclave.domain.docops import (
     apply_op,
     available_anchors,
     fold,
+    normalize_anchor,
     slugify,
+    strip_anchor_tag_line,
+    strip_anchor_tags,
     suppressed_seqs,
 )
 from conclave.domain.files import read_attachment_text
@@ -252,6 +255,17 @@ class DocTools:
                 rec = self._validate_revert(args, reason)
             else:
                 payload = {k: v for k, v in args.items() if k != "reason" and v is not None}
+                # Sanitize at ingestion only — models echo the prompt's {#anchor}
+                # annotations and decorate anchors; stored ops must be clean, but
+                # historical ops replay untouched so old folds stay byte-identical.
+                if "heading" in payload:
+                    payload["heading"] = strip_anchor_tag_line(str(payload["heading"]))
+                for key in ("text", "new_text"):
+                    if key in payload:
+                        payload[key] = strip_anchor_tags(str(payload[key]))
+                for key in ("anchor", "after_anchor"):
+                    if key in payload:
+                        payload[key] = normalize_anchor(str(payload[key]))
                 rec = OpRecord(
                     seq=self._next_seq(),
                     kind=name,

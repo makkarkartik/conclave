@@ -64,6 +64,36 @@ class FoldResult:
 
 _SLUG_STRIP = re.compile(r"[^\w\s-]", re.UNICODE)
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
+_ANCHOR_TAG = re.compile(r"[ \t]*\{#[-\w]+\}[ \t]*$")
+
+
+def strip_anchor_tags(text: str) -> str:
+    """Remove trailing {#anchor} markers from heading lines. The turn prompt shows
+    headings annotated with their anchors, and models sometimes echo that line
+    verbatim into an edit — without this, slugify('Bottom line {#bottom-line}')
+    mints a doubled anchor and a near-duplicate section."""
+    out = []
+    for line in (text or "").split("\n"):
+        out.append(_ANCHOR_TAG.sub("", line) if _HEADING.match(line) else line)
+    return "\n".join(out)
+
+
+def strip_anchor_tag_line(line: str) -> str:
+    """Tag-strip for a bare heading argument (no leading #'s, so the multiline
+    variant's heading check would miss it)."""
+    return _ANCHOR_TAG.sub("", line or "")
+
+
+def normalize_anchor(anchor: str) -> str:
+    """Accept anchors however models write them: '{#bottom-line}', '#bottom-line',
+    '§bottom-line', or a raw heading ('## Bottom line') all resolve the same."""
+    a = (anchor or "").strip()
+    a = re.sub(r"[{}§]", "", a).lstrip("#").strip()
+    if not a:
+        return a
+    if a in (INTRO_ANCHOR, "start", "end"):
+        return a
+    return slugify(a) if not re.fullmatch(r"[-\w]+", a) else a.lower()
 
 
 def slugify(heading_text: str) -> str:

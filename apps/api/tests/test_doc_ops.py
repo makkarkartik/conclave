@@ -12,9 +12,12 @@ from conclave.domain.docops import (
     available_anchors,
     blame_lines,
     fold,
+    normalize_anchor,
     ops_log_lines,
     parse_sections,
     slugify,
+    strip_anchor_tag_line,
+    strip_anchor_tags,
     suppressed_seqs,
 )
 
@@ -46,6 +49,21 @@ def test_parse_ignores_headings_in_code_fences():
 def test_annotate_anchors_tags_headings():
     out = annotate_anchors("# Plan\nbody\n")
     assert "{#plan}" in out
+
+
+def test_strip_anchor_tags_only_touches_heading_lines():
+    text = "## Bottom line  {#bottom-line}\n\nbody with {#not-a-tag} inline\n"
+    out = strip_anchor_tags(text)
+    assert "{#bottom-line}" not in out
+    assert "{#not-a-tag} inline" in out  # body lines untouched
+    assert strip_anchor_tag_line("Bottom line  {#bottom-line}") == "Bottom line"
+
+
+def test_normalize_anchor_accepts_model_decorations():
+    for raw in ("bottom-line", "{#bottom-line}", "#bottom-line", "§bottom-line", "## Bottom line"):
+        assert normalize_anchor(raw) == "bottom-line"
+    assert normalize_anchor("start") == "start"
+    assert normalize_anchor("_intro") == "_intro"
 
 
 # ---------- single-op application ----------
@@ -139,6 +157,28 @@ def test_fold_starts_from_last_active_baseline():
     r = fold(log)
     assert r.text.startswith("# Fresh")
     assert "Rollback" not in r.text
+
+
+async def test_doctools_sanitizes_echoed_annotations():
+    """A model that copies the prompt's annotated heading line into an edit must not
+    mint a doubled anchor (slugify('Bottom line {#bottom-line}') != 'bottom-line')."""
+    from conclave.runtime.turn import DocTools
+
+    dt = DocTools([], expert_name="Ada", lap=0)
+    await dt.execute(
+        "add_section", {"heading": "Bottom line", "text": "v1", "reason": "seed"}
+    )
+    out = await dt.execute(
+        "edit_section",
+        {
+            "anchor": "{#bottom-line}",
+            "new_text": "## Bottom line  {#bottom-line}\n\nv2",
+            "reason": "revise",
+        },
+    )
+    assert out.startswith("Applied")
+    assert available_anchors(dt.doc_text) == ["bottom-line"]
+    assert "v2" in dt.doc_text and "{#" not in dt.doc_text
 
 
 def test_blame_and_log_render():

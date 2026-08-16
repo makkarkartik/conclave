@@ -28,6 +28,7 @@ export type Message = {
   content: string
   gist: string
   action: string
+  agree: boolean
   chips: string[]
   citations: Citation[]
   doc_diff?: string

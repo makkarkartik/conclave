@@ -15,6 +15,7 @@ export function useConclaveApp() {
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null)
   const [showNewRoom, setShowNewRoom] = useState(false)
   const [showDoc, setShowDoc] = useState(false)
+  const [showLog, setShowLog] = useState(false)
   const [showPause, setShowPause] = useState(false)
   const [direction, setDirection] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -261,6 +262,7 @@ export function useConclaveApp() {
     editingExpert,
     showNewRoom,
     showDoc,
+    showLog,
     showPause,
     direction,
     error,
@@ -270,6 +272,7 @@ export function useConclaveApp() {
     setShowExpertModal,
     setShowNewRoom,
     setShowDoc,
+    setShowLog,
     setShowPause,
     setDirection,
     setError,
