@@ -170,6 +170,20 @@ class Objection(BaseModel):
     )
 
 
+class PollAct(BaseModel):
+    """Settlement-poll response: consent to the document as it stands, or claim
+    the floor for a real turn. Polls run in parallel — consent costs the room no
+    serial time; claiming the floor and then changing nothing wastes everyone's."""
+
+    stance: Literal["consent", "floor"]
+    note: str = Field(
+        "",
+        description=(
+            "One sentence: what you will change if given the floor, or why you consent"
+        ),
+    )
+
+
 class TurnAct(BaseModel):
     """The one terminal tool of every expert turn: the expert's final act on the floor.
 

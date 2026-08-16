@@ -13,7 +13,7 @@ import conclave.services.turn_runner as turn_runner
 from conclave.db.ids import new_id
 from conclave.db.models import DEFAULT_TENANT_ID, Conversation, DocOp, Expert, Message
 from conclave.db.session import SessionLocal, engine, init_db
-from conclave.domain.schemas import TurnAct
+from conclave.domain.schemas import PollAct, TurnAct
 from conclave.runtime.turn import DraftOutcome, TurnOutcome
 from conclave.runtime.providers import model_tier
 
@@ -48,6 +48,10 @@ async def _quiet_turn(**kwargs) -> TurnOutcome:
     )
 
 
+async def _consenting_poll(**kwargs) -> PollAct:
+    return PollAct(stance="consent", note="the union stands")
+
+
 def test_model_tier_orders_strongest_first():
     seats = ["gpt-5.6-sol", "claude-sonnet-5", "claude-opus-5", "fake"]
     ranked = sorted(seats, key=model_tier)
@@ -58,6 +62,7 @@ def test_model_tier_orders_strongest_first():
 async def test_sealed_room_drafts_seeds_and_settles(db_or_skip, monkeypatch):
     monkeypatch.setattr(turn_runner, "run_sealed_draft", _sealed_draft)
     monkeypatch.setattr(turn_runner, "run_expert_turn", _quiet_turn)
+    monkeypatch.setattr(turn_runner, "run_settlement_poll", _consenting_poll)
 
     async with SessionLocal() as db:
         experts = [
@@ -120,9 +125,12 @@ async def test_sealed_room_drafts_seeds_and_settles(db_or_skip, monkeypatch):
             by_msg = {m.id for m in drafts}
             assert all(op.message_id in by_msg for op in ops)
 
-            # Dialectic ran from lap 1 and settled at the floor: quiet laps 1-2.
+            # Fast convergence: one parallel all-consent poll at lap 1 settles a
+            # sealed room (floor 2) — consent rows fill the lap, no serial turns.
+            consents = [m for m in msgs if m.action == "consent"]
+            assert len(consents) == 2 and all(m.lap == 1 for m in consents)
             assert conv.status == "converged"
-            assert conv.lap == 3
+            assert conv.lap == 2
             assert conv.converged_solution == conv.shared_proposal
     finally:
         async with SessionLocal() as db:

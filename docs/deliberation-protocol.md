@@ -92,8 +92,19 @@ reward per confirmed flaw, no reward for volume.
 > or a blocking objection.**
 
 Not "everyone said yes" — "no one will put their name behind another change." Silence
-is costly-backed consent. `MIN_LAPS_BEFORE_CONVERGE` (floor 3) survives as-is; the
-safety lap ceiling survives as-is. `lap_converged`'s fingerprint comparison is deleted.
+is costly-backed consent. `MIN_LAPS_BEFORE_CONVERGE` (floor 3; **2 for sealed rooms**,
+whose divergence already happened in the drafts) survives; the safety lap ceiling
+survives as-is. `lap_converged`'s fingerprint comparison is deleted.
+
+**Fast convergence (floor-and-poll).** Consent has no ordering constraint, so it is
+never serialized: each lap opens with a parallel **settlement poll** — every seat is
+asked at once to consent or claim the floor. Consent fills the seat's lap slot
+immediately (a lightweight `consent` message); claimants are persisted to a floor
+queue and take real serial turns in seat order (strongest first). An all-consent poll
+wraps — and, past the floor, settles — the lap in one parallel round. Serial time is
+spent only on turns that change the document; round-robin survives as the guarantee
+that every seat is *asked*, not as the scheduler. Wall-clock to conclusion drops
+roughly 4–6× at unchanged rigor: every mutation is still serial, attributed, staked.
 
 ## 7. Sealed-divergence prefix (optional per room)
 

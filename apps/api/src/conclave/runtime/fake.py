@@ -64,6 +64,32 @@ class FakeDeliberator(BaseChatModel):
             "BINDING CHAIR DIRECTION (obey)" in system
         )
 
+        if "SETTLEMENT POLL" in system:
+            # Consent once the plan exists and any chair direction has been
+            # spoken to; otherwise claim the floor so a real turn happens.
+            plan_missing = "**Decision**: adopt the shared plan" not in human
+            direction_unspoken = directed and "Following the chair's direction" not in human
+            needs_floor = plan_missing or direction_unspoken
+            msg = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "PollAct",
+                        "id": "call_fake_poll",
+                        "type": "tool_call",
+                        "args": {
+                            "stance": "floor" if needs_floor else "consent",
+                            "note": (
+                                "Will speak to the chair's direction."
+                                if needs_floor
+                                else "The shared plan stands; nothing to stake."
+                            ),
+                        },
+                    }
+                ],
+            )
+            return ChatResult(generations=[ChatGeneration(message=msg)])
+
         if "SEALED DRAFTING" in system:
             # Sealed draft: prose, no TurnAct. Every fake expert drafts the same
             # plan (plus a name-distinct angle so union-seeding has collisions

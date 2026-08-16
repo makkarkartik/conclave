@@ -95,6 +95,10 @@ class Conversation(Base):
     # Sealed start (protocol v2 §7): experts draft independently before any of
     # them sees another's work; the union seeds the document.
     sealed_start: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Seats that claimed the floor in the current lap's settlement poll, in
+    # order. Written atomically with the poll's consent rows; drained as the
+    # claimants take their serial turns.
+    floor_queue_json: Mapped[str] = mapped_column(Text, default="[]")
     # Set while answering a follow-up: the room runs until this lap, then goes
     # back to converged without touching the solution.
     consult_until_lap: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -122,6 +126,14 @@ class Conversation(Base):
     @chair_ids.setter
     def chair_ids(self, value: list[str]) -> None:
         self.chair_ids_json = json.dumps(value)
+
+    @property
+    def floor_queue(self) -> list[int]:
+        return json.loads(self.floor_queue_json or "[]")
+
+    @floor_queue.setter
+    def floor_queue(self, value: list[int]) -> None:
+        self.floor_queue_json = json.dumps(value)
 
 
 class Message(Base):

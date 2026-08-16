@@ -260,6 +260,7 @@ async def ask(conversation_id: str, body: AskBody, db: AsyncSession = Depends(ge
 
     conv.user_direction = question
     conv.chair_index = 0
+    conv.floor_queue = []
     conv.claimed_until = None
     conv.claimed_by = None
     if body.reopen:

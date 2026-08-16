@@ -28,8 +28,11 @@ test('a room of fake experts deliberates to convergence in the browser', async (
     })
     await expect(page.getByText('Sealed draft').first()).toBeVisible()
 
-    // Then the dialectic: turns stream in via polling, both experts take the floor
-    await expect(page.getByText('stress-tested').first()).toBeVisible({ timeout: 30_000 })
+    // Then the settlement poll: both experts consent in parallel — slim rows, no
+    // serial turns spent on politeness
+    await expect(page.getByText('consents', { exact: false }).first()).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(page.locator('main').getByText(`Ada ${sfx}`, { exact: true }).first()).toBeVisible()
 
     // Convergence: header badge flips and the solution card appears

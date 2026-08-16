@@ -72,6 +72,7 @@ async def test_persistent_errors_pause_room_instead_of_burning_laps(
     db_or_skip, monkeypatch
 ):
     monkeypatch.setattr(turn_runner, "run_expert_turn", _always_fails)
+    monkeypatch.setattr(turn_runner, "run_settlement_poll", _always_fails)
     monkeypatch.setattr(settings, "error_backoff_seconds", 0)
     monkeypatch.setattr(settings, "max_consecutive_error_turns", 4)
 
@@ -97,6 +98,7 @@ async def test_persistent_errors_pause_room_instead_of_burning_laps(
 
 async def test_error_turn_defers_next_claim(db_or_skip, monkeypatch):
     monkeypatch.setattr(turn_runner, "run_expert_turn", _always_fails)
+    monkeypatch.setattr(turn_runner, "run_settlement_poll", _always_fails)
     monkeypatch.setattr(settings, "error_backoff_seconds", 60)
     monkeypatch.setattr(settings, "max_consecutive_error_turns", 99)
 

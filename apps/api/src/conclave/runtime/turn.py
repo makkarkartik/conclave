@@ -22,7 +22,7 @@ from conclave.domain.docops import (
     suppressed_seqs,
 )
 from conclave.domain.files import read_attachment_text
-from conclave.domain.schemas import TurnAct
+from conclave.domain.schemas import PollAct, TurnAct
 from conclave.runtime.citations import extract_citations, used_web_search
 from conclave.runtime.providers import build_chat_model, native_search_tool
 from conclave.services.context import TurnContext
@@ -43,7 +43,11 @@ Norms:
 - Distinguish blocking issues from polish. Wording nits and speculative infinite regress
   are polish — fold them lightly or drop them.
 - Scrutiny is the default: a coherent first draft is not enough to wave through.
-- Keep spoken messages concise (2-5 sentences). Thoughts may be longer.
+- Keep spoken messages concise (2-5 sentences) and thoughts brief.
+- Match the document's length to the question's stakes. Default to concise: the decision
+  and its load-bearing reasoning, not a treatise. Go long only when the material demands
+  it (dense records, many hard constraints) or the chair explicitly asks for depth. If
+  the document has outgrown its question, condensing it is priority work, not polish.
 - The shared document IS the proposal the room votes on. You change it with section
   operations during your turn — add_section, edit_section, delete_section, revert_edit —
   each with a one-line reason that lands on the permanent record. Write sections in
@@ -139,7 +143,9 @@ afterward, section by section, and the room deliberates over the union.
 Write your complete, best answer to the topic as **GitHub-flavored Markdown with clear
 `##` section headings** — each section enters the shared document under your name.
 Cover what matters, including anything the others might overlook: an angle only you
-raise reaches the room only if you write it now.
+raise reaches the room only if you write it now. Draft at the length the question
+deserves — one tight page for an everyday decision; depth only when the material
+(dense records, many constraints) or the chair explicitly calls for it.
 {direction_block}
 You may use research tools first (e.g. read_attachment). Finish by replying with the
 draft itself — no preamble, no meta-commentary."""
@@ -239,6 +245,95 @@ async def run_sealed_draft(
             messages.append(ToolMessage(content=result, tool_call_id=call["id"]))
 
     return DraftOutcome(text="", tool_chips=chips, citations=citations)
+
+
+POLL_SYSTEM = """You are {name}, a seated expert in a Conclave think tank.
+Persona: {persona}
+
+SETTLEMENT POLL. The room is checking whether deliberation is done. This is not a
+turn — it is a parallel, read-only question to every seat at once:
+
+- CONSENT if you would put your name behind the document as it stands. Consent costs
+  the room nothing and is recorded under your name.
+- Claim the FLOOR only if you will actually stake something on your turn: a specific
+  section operation or a blocking objection. Claiming the floor and then changing
+  nothing wastes every seat's time; consenting to a defective document puts your name
+  on the defect.
+- Polish is not a reason to claim the floor. Competing or duplicated sections on one
+  topic ARE — unreconciled drafts mean deliberation is unfinished.
+{direction_block}
+Answer with exactly one PollAct call."""
+
+POLL_PROMPT = """Topic: {topic}
+
+Deliberation lap: {lap}
+
+Shared document — the artifact you are consenting to or contesting (anchors in {{#...}}):
+{doc}
+
+Section attribution:
+{blame}
+
+Recent turns (verbatim):
+{window}
+
+Consent, or claim the floor: one PollAct call."""
+
+
+async def run_settlement_poll(
+    *,
+    name: str,
+    persona: str,
+    provider: str,
+    model: str,
+    api_key: str,
+    topic: str,
+    user_direction: str,
+    lap: int,
+    context: "TurnContext",
+    llm: Any | None = None,
+) -> PollAct:
+    """One expert's settlement-poll answer: consent or claim the floor. Read-only
+    and cheap — polls for every seat run concurrently."""
+    if llm is None:
+        llm = build_chat_model(provider, model, api_key)
+    bound = llm.bind_tools([PollAct])
+    direction = (user_direction or "").strip()
+    messages: list[BaseMessage] = [
+        SystemMessage(
+            content=POLL_SYSTEM.format(
+                name=name,
+                persona=persona or "Rigorous specialist who challenges weak reasoning, then synthesizes",
+                direction_block=(
+                    f"\nBINDING CHAIR DIRECTION (obey): {direction}\n" if direction else ""
+                ),
+            )
+        ),
+        HumanMessage(
+            content=POLL_PROMPT.format(
+                topic=topic,
+                lap=lap,
+                doc=context.doc_annotated or "(empty)",
+                blame=context.doc_blame or "(none)",
+                window=context.transcript_window or "(no turns yet)",
+            )
+        ),
+    ]
+    for attempt in range(2):
+        response: AIMessage = await bound.ainvoke(messages)
+        calls = list(getattr(response, "tool_calls", None) or [])
+        submit = next((c for c in calls if c["name"] == "PollAct"), None)
+        if submit is not None:
+            return PollAct.model_validate(submit["args"])
+        text = _text_of(response)
+        if text and attempt == 1:
+            # Prose fallback: read the stance out of the words.
+            stance = "consent" if "consent" in text.lower() else "floor"
+            return PollAct(stance=stance, note=text[:200])
+        messages.append(response)
+        messages.append(HumanMessage(content="Answer with exactly one PollAct call."))
+    # No usable answer either attempt: claim the floor — a real turn can recover.
+    return PollAct(stance="floor", note="(poll gave no usable answer)")
 
 
 class ToolProvider(Protocol):

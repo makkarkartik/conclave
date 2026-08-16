@@ -1,6 +1,6 @@
 """Protocol v2 convergence: a room settles when a full lap stakes nothing."""
 
-from conclave.domain.converge import MIN_LAPS_BEFORE_CONVERGE, lap_settled
+from conclave.domain.converge import MIN_LAPS_BEFORE_CONVERGE, lap_settled, min_laps
 
 
 def turn(staked=False, forfeit=False):
@@ -12,6 +12,14 @@ def test_min_laps_floor():
     assert MIN_LAPS_BEFORE_CONVERGE == 3
     assert not lap_settled(laps_done=2, chair_count=2, turns=quiet)
     assert lap_settled(laps_done=3, chair_count=2, turns=quiet)
+
+
+def test_sealed_rooms_owe_a_lower_floor():
+    quiet = [turn(), turn()]
+    assert min_laps(sealed=True) == 2 and min_laps(sealed=False) == 3
+    # Sealed: drafts were the divergence — one reconciliation lap + one quiet lap.
+    assert lap_settled(laps_done=2, chair_count=2, turns=quiet, floor=min_laps(sealed=True))
+    assert not lap_settled(laps_done=1, chair_count=2, turns=quiet, floor=min_laps(sealed=True))
 
 
 def test_any_stake_holds_the_room_open():

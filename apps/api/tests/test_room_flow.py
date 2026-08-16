@@ -14,7 +14,7 @@ import conclave.services.turn_runner as turn_runner
 from conclave.db.ids import new_id
 from conclave.db.models import DEFAULT_TENANT_ID, Conversation, Expert, Message
 from conclave.db.session import SessionLocal, engine, init_db
-from conclave.domain.schemas import TurnAct
+from conclave.domain.schemas import PollAct, TurnAct
 from conclave.runtime.turn import DocTools, TurnOutcome
 
 PLAN_BODY = "Ship the canary with **two experts**."
@@ -52,8 +52,16 @@ async def _scripted_turn(**kwargs) -> TurnOutcome:
     )
 
 
+async def _scripted_poll(**kwargs) -> PollAct:
+    """Claim the floor until the plan exists; consent once it does."""
+    if PLAN_BODY in kwargs["context"].shared_doc:
+        return PollAct(stance="consent", note="the plan stands")
+    return PollAct(stance="floor", note="will seed the plan")
+
+
 async def test_room_converges_via_real_machinery(db_or_skip, monkeypatch):
     monkeypatch.setattr(turn_runner, "run_expert_turn", _scripted_turn)
+    monkeypatch.setattr(turn_runner, "run_settlement_poll", _scripted_poll)
 
     async with SessionLocal() as db:
         experts = [

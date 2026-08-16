@@ -11,7 +11,7 @@ import conclave.services.turn_runner as turn_runner
 from conclave.db.ids import new_id
 from conclave.db.models import DEFAULT_TENANT_ID, Conversation, Expert, Message
 from conclave.db.session import SessionLocal, engine, init_db
-from conclave.domain.schemas import Objection, TurnAct
+from conclave.domain.schemas import Objection, PollAct, TurnAct
 from conclave.runtime.turn import TurnOutcome
 
 SOLUTION = "# Agreed plan\n\nShip the canary."
@@ -154,7 +154,11 @@ async def test_reopening_requires_convergence_to_be_earned_again(db_or_skip, mon
             )
         )
 
+    async def _contesting_poll(**kwargs) -> PollAct:
+        return PollAct(stance="floor", note="the new question changes things")
+
     monkeypatch.setattr(turn_runner, "run_expert_turn", _objecting_turn)
+    monkeypatch.setattr(turn_runner, "run_settlement_poll", _contesting_poll)
     cid, eids = await _converged_room("reopen")
     try:
         async with SessionLocal() as db:

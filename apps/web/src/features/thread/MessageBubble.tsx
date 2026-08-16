@@ -97,6 +97,29 @@ export function MessageBubble({
   expert?: Expert
   highlighted: boolean
 }) {
+  // Consent from a settlement poll: a slim timeline row, not a bubble — four of
+  // these landing at once is the room settling, and it should read that way.
+  if (message.action === 'consent') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center gap-3"
+      >
+        <div className="relative z-[1] flex w-9 shrink-0 justify-center">
+          <Avatar name={message.expert_name} accent={expert?.accent} size={24} />
+        </div>
+        <div className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-think)]">
+          <Check size={12} className="shrink-0 text-[#9ddeb5]" />
+          <span className="font-medium text-[var(--color-speak)]">{message.expert_name}</span>
+          <span className="truncate">
+            consents{message.content ? ` — ${message.content}` : ''}
+          </span>
+        </div>
+      </motion.div>
+    )
+  }
+
   // The chair's own follow-up: a question put to the room — a node on the
   // timeline like any other event, with the bubble keeping its right alignment.
   if (message.action === 'ask') {

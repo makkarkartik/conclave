@@ -14,11 +14,18 @@ from conclave.config import settings
 from conclave.db.ids import new_id
 from conclave.db.models import Attachment, Conversation, DocOp, Expert, Message
 from conclave.db.session import SessionLocal
-from conclave.domain.converge import lap_settled
+from conclave.domain.converge import lap_settled, min_laps
 from conclave.domain.diff import format_doc_change
 from conclave.domain.docops import available_anchors, fold, seed_ops_from_drafts, slugify
 from conclave.domain.files import write_shared_doc
-from conclave.runtime.turn import DraftOutcome, TurnOutcome, run_expert_turn, run_sealed_draft
+from conclave.domain.schemas import PollAct
+from conclave.runtime.turn import (
+    DraftOutcome,
+    TurnOutcome,
+    run_expert_turn,
+    run_sealed_draft,
+    run_settlement_poll,
+)
 from conclave.services.context import build_turn_context, fold_lap_into_summary, load_doc_ops
 from conclave.services.keys import resolve_api_key
 
@@ -220,6 +227,143 @@ async def _run_drafting(db, conv: Conversation) -> None:
         log.info("drafting collision in %s", conv.id)
 
 
+async def _wrap_lap(db, conv: Conversation, chairs: list[str], *, consulting: bool) -> None:
+    """A lap's slots are all filled: fold it, then decide the room's fate —
+    consulting rooms return to converged, quiet laps past the floor settle."""
+    completed_lap = conv.lap
+    conv.lap = completed_lap + 1
+    conv.floor_queue = []
+    await db.flush()
+    lap_msgs = (
+        await db.scalars(
+            select(Message)
+            .where(Message.conversation_id == conv.id, Message.lap == completed_lap)
+            .order_by(Message.created_at.asc(), Message.id.asc())
+        )
+    ).all()
+    fold_lap_into_summary(conv, completed_lap, list(lap_msgs))
+    turns = [
+        {
+            "forfeit": m.action == "forfeit",
+            # Consent (agree) is exactly "staked nothing" for non-forfeits.
+            "staked": m.action != "forfeit" and not m.agree,
+        }
+        for m in lap_msgs
+        if m.chair_index >= 0  # chair questions never occupy a turn slot
+    ]
+    if consulting:
+        # A follow-up is answered, not re-deliberated: the experts respond for
+        # one lap and the room returns to converged with its solution untouched.
+        if conv.consult_until_lap is None or conv.lap >= conv.consult_until_lap:
+            conv.status = "converged"
+            conv.consult_until_lap = None
+            # The question was binding direction while it was live; a stale one
+            # must not command every future turn.
+            conv.user_direction = ""
+    elif lap_settled(
+        laps_done=conv.lap,
+        chair_count=len(chairs),
+        turns=turns,
+        floor=min_laps(sealed=conv.sealed_start),
+    ):
+        conv.status = "converged"
+        conv.converged_solution = conv.shared_proposal
+        conv.user_direction = ""
+    elif conv.lap >= settings.safety_lap_ceiling:
+        conv.status = "safety_pause"
+
+
+async def _run_poll(db, conv: Conversation, chairs: list[str]) -> bool:
+    """The settlement poll (fast convergence): every seat is asked, in parallel,
+    to consent or claim the floor. Consent fills the seat's lap slot immediately;
+    claimants keep their slots empty and take real serial turns next. A lap where
+    everyone consents wraps — and settles, past the floor — right here, for the
+    cost of one parallel round. Returns True when every poll errored (backoff)."""
+    context = await build_turn_context(db, conv)
+    seats: list[tuple[int, Expert, str]] = []
+    vacant: list[int] = []
+    for idx, chair_id in enumerate(chairs):
+        expert = await db.get(Expert, chair_id)
+        if expert is None:
+            vacant.append(idx)
+        else:
+            seats.append((idx, expert, await resolve_api_key(db, expert)))
+
+    async def one(expert: Expert, api_key: str):
+        try:
+            act = await run_settlement_poll(
+                name=expert.name,
+                persona=expert.persona,
+                provider=expert.provider,
+                model=expert.model,
+                api_key=api_key,
+                topic=conv.topic,
+                user_direction=conv.user_direction,
+                lap=conv.lap,
+                context=context,
+            )
+            return act, False
+        except Exception as exc:  # noqa: BLE001 — a dead seat claims the floor instead
+            log.warning("poll failed in %s (%s): %s", conv.id, expert.name, exc)
+            return PollAct(stance="floor", note="(poll errored — will take a real turn)"), True
+
+    results = await asyncio.gather(*(one(e, k) for _, e, k in seats)) if seats else []
+
+    claimants: list[int] = []
+    for (idx, expert, _key), (act, _err) in zip(seats, results):
+        if act.stance == "consent":
+            msg = Message(
+                id=new_id(),
+                tenant_id=conv.tenant_id,
+                conversation_id=conv.id,
+                expert_id=expert.id,
+                expert_name=expert.name,
+                provider=expert.provider,
+                model=expert.model,
+                lap=conv.lap,
+                chair_index=idx,
+                content=act.note or "Consents — nothing to stake.",
+                gist=f"{expert.name} consented without staking a change",
+                action="consent",
+                agree=True,
+            )
+            db.add(msg)
+        else:
+            claimants.append(idx)
+    for idx in vacant:
+        db.add(
+            Message(
+                id=new_id(),
+                tenant_id=conv.tenant_id,
+                conversation_id=conv.id,
+                expert_id=None,
+                expert_name="Vacant seat",
+                lap=conv.lap,
+                chair_index=idx,
+                content="(seat vacant — expert deleted)",
+                gist="seat vacant",
+                action="forfeit",
+                agree=False,
+            )
+        )
+
+    if claimants:
+        # Floor goes to claimants in seat order — seats are already ranked
+        # strongest-first at room start. Persisted with the consent rows so a
+        # retried claim resumes the queue instead of re-polling.
+        conv.floor_queue = sorted(claimants)
+        conv.chair_index = min(claimants)
+    else:
+        await _wrap_lap(db, conv, chairs, consulting=False)
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Another worker polled this lap (expired lease + retry). Its rows stand.
+        await db.rollback()
+        log.info("poll collision in %s lap=%s", conv.id, conv.lap)
+    return bool(results) and all(err for _act, err in results)
+
+
 async def run_one_turn(conversation_id: str, worker_id: str) -> None:
     heartbeat = asyncio.create_task(_heartbeat(conversation_id, worker_id))
     errored = False
@@ -239,10 +383,55 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                 await db.commit()
                 return
 
-            idx = conv.chair_index % len(chairs)
+            # Slot-based scheduling: a lap is complete when every seat has a
+            # message. A fresh lap opens with a parallel settlement poll (running
+            # rooms only — consulting rooms answer serially); claimants and
+            # mid-lap seats take serial turns in seat order.
+            have = set(
+                (
+                    await db.scalars(
+                        select(Message.chair_index).where(
+                            Message.conversation_id == conv.id,
+                            Message.lap == conv.lap,
+                            Message.chair_index >= 0,
+                        )
+                    )
+                ).all()
+            )
+            missing = [i for i in range(len(chairs)) if i not in have]
+            if not missing:
+                # Crash landed between the last slot and the wrap: finish it.
+                await _wrap_lap(db, conv, chairs, consulting=consulting)
+                await db.commit()
+                return
+            queue = [i for i in conv.floor_queue if i in missing]
+            if not consulting and not queue and len(missing) == len(chairs):
+                errored = await _run_poll(db, conv, chairs)
+                return
+
+            idx = queue[0] if queue else missing[0]
             expert = await db.get(Expert, chairs[idx])
             if expert is None:
-                conv.chair_index = (idx + 1) % len(chairs)
+                db.add(
+                    Message(
+                        id=new_id(),
+                        tenant_id=conv.tenant_id,
+                        conversation_id=conv.id,
+                        expert_id=None,
+                        expert_name="Vacant seat",
+                        lap=conv.lap,
+                        chair_index=idx,
+                        content="(seat vacant — expert deleted)",
+                        gist="seat vacant",
+                        action="forfeit",
+                        agree=False,
+                    )
+                )
+                conv.floor_queue = [i for i in queue if i != idx]
+                remaining = [i for i in missing if i != idx]
+                conv.chair_index = remaining[0] if remaining else 0
+                if not remaining:
+                    await _wrap_lap(db, conv, chairs, consulting=consulting)
                 await db.commit()
                 return
 
@@ -336,45 +525,11 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
             msg.chips = chips
             msg.citations = outcome.citations
             db.add(msg)
-            conv.chair_index = (idx + 1) % len(chairs)
-
-            if conv.chair_index == 0:
-                completed_lap = conv.lap
-                conv.lap = completed_lap + 1
-                await db.flush()
-                lap_msgs = (
-                    await db.scalars(
-                        select(Message)
-                        .where(Message.conversation_id == conv.id, Message.lap == completed_lap)
-                        .order_by(Message.created_at.asc(), Message.id.asc())
-                    )
-                ).all()
-                fold_lap_into_summary(conv, completed_lap, list(lap_msgs))
-                turns = [
-                    {
-                        "forfeit": m.action == "forfeit",
-                        # Consent (agree) is exactly "staked nothing" for non-forfeits.
-                        "staked": m.action != "forfeit" and not m.agree,
-                    }
-                    for m in lap_msgs
-                    if m.chair_index >= 0  # chair questions never occupy a turn slot
-                ]
-                if consulting:
-                    # A follow-up is answered, not re-deliberated: the experts
-                    # respond for one lap and the room returns to converged with
-                    # its solution untouched.
-                    if conv.consult_until_lap is None or conv.lap >= conv.consult_until_lap:
-                        conv.status = "converged"
-                        conv.consult_until_lap = None
-                        # The question was binding direction while it was live; a
-                        # stale one must not command every future turn.
-                        conv.user_direction = ""
-                elif lap_settled(laps_done=conv.lap, chair_count=len(chairs), turns=turns):
-                    conv.status = "converged"
-                    conv.converged_solution = conv.shared_proposal
-                    conv.user_direction = ""
-                elif conv.lap >= settings.safety_lap_ceiling:
-                    conv.status = "safety_pause"
+            conv.floor_queue = [i for i in queue if i != idx]
+            remaining = [i for i in missing if i != idx]
+            conv.chair_index = remaining[0] if remaining else 0
+            if not remaining:
+                await _wrap_lap(db, conv, chairs, consulting=consulting)
 
             if errored and conv.status in ("running", "consulting"):
                 # A persistently failing room (dead key, provider outage) must not
