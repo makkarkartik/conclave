@@ -73,6 +73,25 @@ export type Conversation = {
   speaking_expert_id: string | null
 }
 
+export type DocSection = {
+  anchor: string
+  heading: string
+  expert: string
+  lap: number
+  seq: number
+  reason: string
+}
+
+export type DocOpRow = {
+  seq: number
+  lap: number
+  expert: string
+  kind: string
+  target: string
+  reason: string
+  reverted: boolean
+}
+
 export type ConversationUpdates = {
   status: string
   lap: number
@@ -185,7 +204,9 @@ export const api = {
   deleteAttachment: (id: string, attachmentId: string) =>
     req<{ ok: boolean }>(`/conversations/${id}/files/${attachmentId}`, { method: 'DELETE' }),
   getSharedDoc: (id: string) =>
-    req<{ content: string; blame: string; ops_log: string }>(`/conversations/${id}/shared-doc`),
+    req<{ content: string; sections: DocSection[]; ops: DocOpRow[] }>(
+      `/conversations/${id}/shared-doc`,
+    ),
   putSharedDoc: (id: string, content: string) =>
     req<{ content: string }>(`/conversations/${id}/shared-doc`, {
       method: 'PUT',

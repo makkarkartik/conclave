@@ -116,7 +116,9 @@ export default function App() {
           conversationId={app.active.id}
           content={app.active.shared_doc}
           fallback={app.active.converged_solution || app.active.shared_proposal}
-          editable={app.active.status !== 'running'}
+          docRev={app.active.doc_rev}
+          experts={app.experts}
+          editable={!['running', 'drafting'].includes(app.active.status)}
           onClose={() => app.setShowDoc(false)}
           onSave={app.onSaveDoc}
         />

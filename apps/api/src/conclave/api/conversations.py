@@ -19,7 +19,7 @@ from conclave.db.models import (  # noqa: F401
     Message,
 )
 from conclave.db.session import get_db
-from conclave.domain.docops import blame_lines, fold, ops_log_lines
+from conclave.domain.docops import fold, parse_sections, suppressed_seqs
 from conclave.domain.files import (
     ALLOWED_SUFFIXES,
     conversation_dir,
@@ -349,16 +349,49 @@ async def delete_attachment(
 
 @router.get("/{conversation_id}/shared-doc")
 async def get_shared_doc(conversation_id: str, db: AsyncSession = Depends(get_db)):
+    """The document plus its structured history: per-section attribution in
+    document order, and the full operation log with revert status — the client
+    renders these, it never parses strings."""
     conv = await _get_conv(db, conversation_id)
-    ops, _ = await load_doc_ops(db, conv)
-    if not ops:
-        return {"content": read_shared_doc(conversation_id), "blame": "", "ops_log": ""}
-    folded = fold(ops)
-    return {
-        "content": folded.text,
-        "blame": blame_lines(folded),
-        "ops_log": ops_log_lines(ops, limit=30),
-    }
+    ops_records, _ = await load_doc_ops(db, conv)
+    if not ops_records:
+        return {"content": read_shared_doc(conversation_id), "sections": [], "ops": []}
+    folded = fold(ops_records)
+    dead = suppressed_seqs(ops_records)
+    doc_sections = [s for s in parse_sections(folded.text) if s.heading]
+    headings = {s.anchor: s.heading.lstrip("#").strip() for s in doc_sections}
+    order = {s.anchor: i for i, s in enumerate(doc_sections)}
+    sections = sorted(
+        (
+            {
+                "anchor": anchor,
+                "heading": headings.get(anchor, anchor),
+                "expert": b.expert_name,
+                "lap": b.lap,
+                "seq": b.seq,
+                "reason": b.reason,
+            }
+            for anchor, b in folded.blame.items()
+        ),
+        key=lambda s: order.get(s["anchor"], 999),
+    )
+    ops = [
+        {
+            "seq": o.seq,
+            "lap": o.lap,
+            "expert": o.expert_name,
+            "kind": o.kind,
+            "target": str(
+                o.payload.get("anchor")
+                or o.payload.get("heading")
+                or (f"op {o.payload.get('target_seq')}" if o.kind == "revert" else "")
+            ),
+            "reason": o.reason,
+            "reverted": o.seq in dead,
+        }
+        for o in sorted(ops_records, key=lambda o: o.seq)
+    ]
+    return {"content": folded.text, "sections": sections, "ops": ops}
 
 
 @router.put("/{conversation_id}/shared-doc")
