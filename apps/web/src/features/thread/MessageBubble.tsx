@@ -1,9 +1,32 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronDown, FileDiff, Globe } from 'lucide-react'
+import { Check, ChevronDown, FileDiff, Globe, HelpCircle, Minus, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Avatar } from '../../shared/ui/Avatar'
 import type { Expert, Message } from '../../shared/lib/api'
+
+/** The avatar as a timeline node: stance badged on its corner, so the rail reads
+ * as a chain of decisions, not just a chat. */
+function StanceBadge({ message }: { message: Message }) {
+  const stance =
+    message.action === 'forfeit' ? 'passed' : message.agree ? 'backs' : 'objects'
+  const style = {
+    backs: { bg: 'bg-[#50c878]', label: 'backs the proposal', Icon: Check },
+    objects: { bg: 'bg-[var(--color-coral)]', label: 'still objects', Icon: X },
+    passed: { bg: 'bg-[var(--color-pass)]', label: 'passed', Icon: Minus },
+  }[stance]
+  return (
+    <span
+      title={`${message.expert_name} ${style.label}`}
+      className={clsx(
+        'absolute -right-1 -bottom-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-[var(--color-ink)]',
+        style.bg,
+      )}
+    >
+      <style.Icon size={9} className="text-[#12141a]" strokeWidth={3} />
+    </span>
+  )
+}
 
 function DiffBlock({ diff }: { diff: string }) {
   const [open, setOpen] = useState(true)
@@ -67,16 +90,24 @@ export function MessageBubble({
   expert?: Expert
   highlighted: boolean
 }) {
-  // The chair's own follow-up: a question put to the room, not a turn taken in it.
+  // The chair's own follow-up: a question put to the room — a node on the
+  // timeline like any other event, with the bubble keeping its right alignment.
   if (message.action === 'ask') {
     return (
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl rounded-br-md border border-[var(--color-sky)]/30 bg-[rgba(107,163,255,0.12)] px-4 py-3">
-          <div className="mb-1 text-[10px] font-semibold tracking-wide text-[var(--color-sky)] uppercase">
-            Your question
-          </div>
-          <div className="text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--color-speak)]">
-            {message.content}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3">
+        <div className="flex w-9 shrink-0 justify-center pt-1">
+          <span className="relative z-[1] flex h-6 w-6 items-center justify-center rounded-full border border-[var(--color-sky)]/40 bg-[var(--color-panel)]">
+            <HelpCircle size={13} className="text-[var(--color-sky)]" />
+          </span>
+        </div>
+        <div className="flex min-w-0 flex-1 justify-end">
+          <div className="max-w-[80%] rounded-2xl rounded-br-md border border-[var(--color-sky)]/30 bg-[rgba(107,163,255,0.12)] px-4 py-3">
+            <div className="mb-1 text-[10px] font-semibold tracking-wide text-[var(--color-sky)] uppercase">
+              Your question
+            </div>
+            <div className="text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--color-speak)]">
+              {message.content}
+            </div>
           </div>
         </div>
       </motion.div>
@@ -89,7 +120,10 @@ export function MessageBubble({
       animate={{ opacity: 1, y: 0 }}
       className="flex gap-3"
     >
-      <Avatar name={message.expert_name} accent={expert?.accent} />
+      <div className="relative z-[1] h-fit shrink-0">
+        <Avatar name={message.expert_name} accent={expert?.accent} />
+        <StanceBadge message={message} />
+      </div>
       <div
         className={clsx(
           'min-w-0 flex-1 rounded-2xl border border-[var(--color-line)] bg-[rgba(28,31,42,0.72)] p-4 backdrop-blur',
