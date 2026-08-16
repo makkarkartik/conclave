@@ -144,10 +144,9 @@ async def test_reopening_requires_convergence_to_be_earned_again(db_or_skip, mon
         assert kwargs["consulting"] is False
         return TurnOutcome(
             act=TurnAct(
-                action="write_proposal",
+                action="speak",
                 message="That changes things.",
-                gist=f"{kwargs['name']} revised after the new question",
-                proposal=f"{SOLUTION}\n\nRevised by {kwargs['name']}.",
+                gist=f"{kwargs['name']} withheld agreement after the new question",
                 agree=False,
             )
         )

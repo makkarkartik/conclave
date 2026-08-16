@@ -15,9 +15,10 @@ from conclave.db.ids import new_id
 from conclave.db.models import DEFAULT_TENANT_ID, Conversation, Expert, Message
 from conclave.db.session import SessionLocal, engine, init_db
 from conclave.domain.schemas import TurnAct
-from conclave.runtime.turn import TurnOutcome
+from conclave.runtime.turn import DocTools, TurnOutcome
 
-PROPOSAL = "# Plan\n\nShip the canary with **two experts**."
+PLAN_BODY = "Ship the canary with **two experts**."
+PROPOSAL = f"## Plan\n\n{PLAN_BODY}\n"  # the fold of the one seeding op
 
 
 @pytest.fixture
@@ -31,15 +32,24 @@ async def db_or_skip():
 
 
 async def _scripted_turn(**kwargs) -> TurnOutcome:
+    """First expert seeds the plan section; everyone after endorses as-is —
+    the v2 shape of 'the whole room backs one identical document'."""
+    ctx = kwargs["context"]
+    doc = DocTools(ctx.doc_ops, expert_name=kwargs["name"], lap=kwargs["lap"])
+    if PLAN_BODY not in ctx.shared_doc:
+        await doc.execute(
+            "add_section", {"heading": "Plan", "text": PLAN_BODY, "reason": "seed the plan"}
+        )
     return TurnOutcome(
         act=TurnAct(
-            action="write_proposal",
+            action="speak",
             message="I stress-tested it; the tradeoffs hold.",
             thought="scripted",
             gist=f"{kwargs['name']} endorsed the plan",
-            proposal=PROPOSAL,
             agree=True,
-        )
+        ),
+        staged_ops=list(doc.staged),
+        doc_after=doc.doc_text if doc.staged else None,
     )
 
 

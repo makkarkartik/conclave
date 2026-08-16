@@ -1,11 +1,6 @@
 from pathlib import Path
 
-from conclave.domain.files import (
-    edit_shared_doc,
-    read_shared_doc,
-    remove_conversation_dir,
-    write_shared_doc,
-)
+from conclave.domain.files import read_shared_doc, remove_conversation_dir, write_shared_doc
 from conclave.domain.mask import mask_key
 
 
@@ -21,9 +16,7 @@ def test_shared_doc_roundtrip(tmp_path, monkeypatch):
     cid = "conv-test"
     write_shared_doc(cid, "# Hello\n")
     assert "Hello" in read_shared_doc(cid)
-    edit_shared_doc(cid, "append", "World")
-    assert "World" in read_shared_doc(cid)
-    edit_shared_doc(cid, "replace", "Only")
+    write_shared_doc(cid, "Only")
     assert read_shared_doc(cid) == "Only"
     assert (tmp_path / "conversations" / cid / "shared.md").exists()
     remove_conversation_dir(cid)

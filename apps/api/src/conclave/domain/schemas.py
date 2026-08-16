@@ -151,12 +151,14 @@ class SharedDocBody(BaseModel):
 class TurnAct(BaseModel):
     """The one terminal tool of every expert turn: the expert's final act on the floor.
 
-    Reading attachments (and, later, MCP connectors) are ordinary tools used before
-    this call; TurnAct ends the turn.
+    Document changes happen through the section tools (add_section, edit_section,
+    delete_section, revert_edit) before this call — they apply immediately and are
+    committed with the turn. Reading attachments (and, later, MCP connectors) are
+    ordinary tools too. TurnAct ends the turn.
     """
 
     thought: str = Field("", description="Private reasoning; longer than the spoken message is fine")
-    action: Literal["speak", "write_proposal", "edit_shared_doc", "forfeit"] = "speak"
+    action: Literal["speak", "forfeit"] = "speak"
     message: str = Field("", description="What you say to the room, 2-5 sentences")
     gist: str = Field(
         "",
@@ -165,9 +167,4 @@ class TurnAct(BaseModel):
             "this turn. Becomes the room's permanent ledger."
         ),
     )
-    proposal: str | None = Field(
-        None, description="write_proposal only: the full shared proposal as GitHub Markdown"
-    )
-    doc_edit_mode: Literal["append", "replace"] | None = None
-    doc_edit_content: str | None = None
     agree: bool = False

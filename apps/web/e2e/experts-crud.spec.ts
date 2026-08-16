@@ -16,9 +16,13 @@ test('create, edit, and delete an expert through the UI', async ({ page }) => {
   await expect(row).toBeVisible()
   await expect(row).toContainText('openai · gpt-4.1')
 
-  // Edit: masked key hint shown, rename persists
+  // Edit: masked key hint shown, rename persists. The copy depends on whether the
+  // pasted key became the tenant's shared provider key (fresh DB) or an override
+  // (a different shared key already existed) — both are correct here.
   await row.getByTitle('Edit connector').first().click()
-  await expect(page.getByText(/Leave API key blank to keep the current key/)).toBeVisible()
+  await expect(
+    page.getByText(/has its own key|uses the shared openai key/),
+  ).toBeVisible()
   await expect(page.getByText(/sk-…7890/)).toBeVisible()
   await page.getByLabel('Name').fill(`${name} v2`)
   await page.getByRole('button', { name: 'Save changes' }).click()

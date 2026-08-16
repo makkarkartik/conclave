@@ -30,10 +30,13 @@ async def test_fake_provider_completes_a_turn(monkeypatch):
         lap=0,
         context=ctx(),
     )
-    assert outcome.act.action == "write_proposal"
+    assert outcome.act.action == "speak"
     assert outcome.act.agree is True
-    assert "Ship the canary?" in (outcome.act.proposal or "")
     assert outcome.act.gist
+    # The fake seeds an empty document with one section op.
+    assert [op.kind for op in outcome.staged_ops] == ["add_section"]
+    assert "Ship the canary?" in (outcome.doc_after or "")
+    assert "**Decision**" in (outcome.doc_after or "")
 
 
 async def test_fake_provider_gated_by_flag(monkeypatch):

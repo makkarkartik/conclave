@@ -175,6 +175,8 @@ export const api = {
   },
   deleteAttachment: (id: string, attachmentId: string) =>
     req<{ ok: boolean }>(`/conversations/${id}/files/${attachmentId}`, { method: 'DELETE' }),
+  getSharedDoc: (id: string) =>
+    req<{ content: string; blame: string; ops_log: string }>(`/conversations/${id}/shared-doc`),
   putSharedDoc: (id: string, content: string) =>
     req<{ content: string }>(`/conversations/${id}/shared-doc`, {
       method: 'PUT',

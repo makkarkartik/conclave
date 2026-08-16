@@ -1,6 +1,7 @@
 """Deterministic fake LLM for E2E tests: drives any room to convergence.
 
-Every expert writes the same topic-derived proposal and votes agree, so a room
+The first expert to see an empty document seeds the plan section (one add_section
+op); everyone after speaks and agrees, so fingerprints match and the room
 converges exactly at the MIN_LAPS floor. A small per-call delay keeps the UI's
 thinking states observable and gives pause/resume tests room to act.
 """
@@ -16,7 +17,7 @@ from langchain_core.callbacks import (
     CallbackManagerForLLMRun,
 )
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 _NAME_RE = re.compile(r"You are (.+?), a seated expert")
@@ -44,7 +45,12 @@ class FakeDeliberator(BaseChatModel):
 
     def _result(self, messages: list[BaseMessage]) -> ChatResult:
         system = _text(messages[0].content) if messages else ""
-        human = _text(messages[-1].content) if messages else ""
+        # The turn prompt is the last *human* message — mid-turn, the tail of the
+        # transcript is tool results.
+        human = next(
+            (_text(m.content) for m in reversed(messages) if isinstance(m, HumanMessage)),
+            "",
+        )
         name_m = _NAME_RE.search(system)
         topic_m = _TOPIC_RE.search(human)
         if not name_m or not topic_m:
@@ -60,11 +66,33 @@ class FakeDeliberator(BaseChatModel):
             if directed
             else f"I stress-tested the plan for '{topic}' and the tradeoffs hold."
         )
-        proposal = (
-            f"# Plan: {topic}\n\n"
-            "- **Decision**: adopt the shared plan.\n"
-            "- Steps: 1) draft, 2) review, 3) ship.\n"
+
+        seeded = "**Decision**: adopt the shared plan" in human or any(
+            isinstance(m, ToolMessage) for m in messages
         )
+        if not seeded:
+            # Empty document: seed the plan as one section op, then (next call,
+            # after the ToolMessage lands) finish the turn with TurnAct.
+            msg = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "add_section",
+                        "id": "call_fake_seed",
+                        "type": "tool_call",
+                        "args": {
+                            "heading": f"Plan: {topic}",
+                            "text": (
+                                "- **Decision**: adopt the shared plan.\n"
+                                "- Steps: 1) draft, 2) review, 3) ship."
+                            ),
+                            "reason": "Seed the shared plan",
+                        },
+                    }
+                ],
+            )
+            return ChatResult(generations=[ChatGeneration(message=msg)])
+
         msg = AIMessage(
             content="",
             tool_calls=[
@@ -74,10 +102,9 @@ class FakeDeliberator(BaseChatModel):
                     "type": "tool_call",
                     "args": {
                         "thought": f"{name} deterministic turn (fake provider)",
-                        "action": "write_proposal",
+                        "action": "speak",
                         "message": spoken,
                         "gist": f"{name} endorsed the shared plan",
-                        "proposal": proposal,
                         "agree": True,
                     },
                 }

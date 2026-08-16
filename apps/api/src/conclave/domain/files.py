@@ -53,13 +53,6 @@ def write_shared_doc(conversation_id: str, content: str) -> str:
     return content
 
 
-def edit_shared_doc(conversation_id: str, mode: str, content: str) -> str:
-    current = read_shared_doc(conversation_id)
-    if mode == "replace":
-        return write_shared_doc(conversation_id, content)
-    return write_shared_doc(conversation_id, current.rstrip() + "\n\n" + content.strip() + "\n")
-
-
 def _ocr_pdf_text(p: Path) -> str:
     """OCR an image-only PDF locally (RapidOCR — nothing leaves the machine)."""
     try:

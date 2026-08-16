@@ -5,14 +5,21 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy import select, tuple_
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from conclave.api.serializers import conversation_out, message_out, speaking_expert_id
 from conclave.db.ids import new_id
-from conclave.db.models import DEFAULT_TENANT_ID, Attachment, Conversation, Message  # noqa: F401
+from conclave.db.models import (  # noqa: F401
+    DEFAULT_TENANT_ID,
+    Attachment,
+    Conversation,
+    DocOp,
+    Message,
+)
 from conclave.db.session import get_db
+from conclave.domain.docops import blame_lines, fold, ops_log_lines
 from conclave.domain.files import (
     ALLOWED_SUFFIXES,
     conversation_dir,
@@ -21,6 +28,7 @@ from conclave.domain.files import (
     remove_conversation_dir,
     write_shared_doc,
 )
+from conclave.services.context import load_doc_ops
 from conclave.domain.schemas import (
     AskBody,
     ConversationCreate,
@@ -316,18 +324,44 @@ async def delete_attachment(
 
 @router.get("/{conversation_id}/shared-doc")
 async def get_shared_doc(conversation_id: str, db: AsyncSession = Depends(get_db)):
-    await _get_conv(db, conversation_id)
-    return {"content": read_shared_doc(conversation_id)}
+    conv = await _get_conv(db, conversation_id)
+    ops, _ = await load_doc_ops(db, conv)
+    if not ops:
+        return {"content": read_shared_doc(conversation_id), "blame": "", "ops_log": ""}
+    folded = fold(ops)
+    return {
+        "content": folded.text,
+        "blame": blame_lines(folded),
+        "ops_log": ops_log_lines(ops, limit=30),
+    }
 
 
 @router.put("/{conversation_id}/shared-doc")
 async def put_shared_doc(
     conversation_id: str, body: SharedDocBody, db: AsyncSession = Depends(get_db)
 ):
+    """A chair edit is an operation like any other: a baseline the chair signs.
+    It supersedes prior ops in the fold, so history stays intact behind it."""
     conv = await _get_conv(db, conversation_id)
     if conv.status == "running":
         raise HTTPException(400, "Pause before editing the shared doc")
+    max_seq = await db.scalar(
+        select(func.max(DocOp.seq)).where(DocOp.conversation_id == conversation_id)
+    )
+    op = DocOp(
+        id=new_id(),
+        tenant_id=conv.tenant_id,
+        conversation_id=conversation_id,
+        expert_name="Chair",
+        seq=(max_seq or 0) + 1,
+        lap=conv.lap,
+        kind="baseline",
+        reason="Chair edited the document directly",
+    )
+    op.payload = {"text": body.content}
+    db.add(op)
     content = write_shared_doc(conversation_id, body.content)
+    conv.shared_proposal = body.content
     conv.doc_rev += 1
     await db.commit()
     return {"content": content}

@@ -103,6 +103,7 @@ export default function App() {
       )}
       {app.showDoc && app.active && (
         <DocDrawer
+          conversationId={app.active.id}
           content={app.active.shared_doc}
           fallback={app.active.converged_solution || app.active.shared_proposal}
           editable={app.active.status !== 'running'}

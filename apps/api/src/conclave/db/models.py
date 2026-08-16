@@ -172,6 +172,49 @@ class Message(Base):
         self.citations_json = json.dumps(value)
 
 
+class DocOp(Base):
+    """One attributed operation on a room's shared document (protocol v2, §3).
+
+    The document is the fold of these rows (domain/docops.py); the shared.md file
+    and conversations.shared_proposal are caches of that fold. `seq` orders ops
+    within a room — turns are serialized by the claim lease, so allocation is
+    race-free, and the unique constraint backstops it anyway. Reverts are rows
+    too: suppression is computed at fold time, never stored.
+    """
+
+    __tablename__ = "doc_ops"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "seq", name="uq_doc_ops_conv_seq"),
+        Index("ix_doc_ops_conv_seq", "conversation_id", "seq"),
+        Index("ix_doc_ops_tenant", "tenant_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"))
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE")
+    )
+    # The turn message this op landed with; None for chair edits and migration baselines.
+    message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    expert_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    expert_name: Mapped[str] = mapped_column(String(120), default="Chair")
+    seq: Mapped[int] = mapped_column(Integer)
+    lap: Mapped[int] = mapped_column(Integer, default=0)
+    kind: Mapped[str] = mapped_column(String(20))
+    anchor: Mapped[str] = mapped_column(String(200), default="")
+    reason: Mapped[str] = mapped_column(Text, default="")
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    @property
+    def payload(self) -> dict:
+        return json.loads(self.payload_json or "{}")
+
+    @payload.setter
+    def payload(self, value: dict) -> None:
+        self.payload_json = json.dumps(value)
+
+
 class Attachment(Base):
     __tablename__ = "attachments"
     __table_args__ = (Index("ix_attachments_tenant", "tenant_id"),)

@@ -12,11 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from conclave.config import settings
 from conclave.db.ids import new_id
-from conclave.db.models import Conversation, Expert, Message
+from conclave.db.models import Conversation, DocOp, Expert, Message
 from conclave.db.session import SessionLocal
 from conclave.domain.converge import lap_converged, proposal_fingerprint
 from conclave.domain.diff import format_doc_change
-from conclave.domain.files import edit_shared_doc, read_shared_doc, write_shared_doc
+from conclave.domain.files import write_shared_doc
 from conclave.runtime.turn import TurnOutcome, run_expert_turn
 from conclave.services.context import build_turn_context, fold_lap_into_summary
 from conclave.services.keys import resolve_api_key
@@ -148,34 +148,44 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
             if act.action == "forfeit":
                 content = content or "Passed — listening."
                 chips.append("Passed")
-            if act.action == "write_proposal" and act.proposal:
-                before_doc = read_shared_doc(conv.id)
-                conv.shared_proposal = act.proposal
-                write_shared_doc(conv.id, act.proposal)
-                doc_diff = format_doc_change(before_doc, act.proposal, mode="replace")
-                conv.doc_rev += 1
-                chips.extend(["Updated proposal", "Updated shared doc"])
-                content = content or "Updated the shared proposal and document."
-            if act.action == "edit_shared_doc":
-                doc_body = (act.doc_edit_content or act.proposal or act.message or "").strip()
-                if doc_body:
-                    mode = act.doc_edit_mode or "append"
-                    before_doc = read_shared_doc(conv.id)
-                    edit_shared_doc(conv.id, mode, doc_body)
-                    after_doc = read_shared_doc(conv.id)
-                    doc_diff = format_doc_change(before_doc, after_doc, mode=mode)
-                    conv.doc_rev += 1
-                    chips.append("Updated shared doc")
-                    content = content or (
-                        "Appended to the shared document."
-                        if mode == "append"
-                        else "Replaced the shared document."
+
+            msg_id = new_id()
+            staged = list(outcome.staged_ops)
+            if staged and outcome.doc_after is not None:
+                # Persist the turn's document operations atomically with the message.
+                # For a pre-op-log room the synthesized baseline is the first row,
+                # so the fold reproduces the v1 text before the new ops apply.
+                if context.baseline_synthesized:
+                    staged = context.doc_ops + staged
+                before_doc = context.shared_doc
+                for rec in staged:
+                    row = DocOp(
+                        id=new_id(),
+                        tenant_id=conv.tenant_id,
+                        conversation_id=conv.id,
+                        message_id=None if rec.kind == "baseline" else msg_id,
+                        expert_id=None if rec.kind == "baseline" else expert.id,
+                        expert_name=rec.expert_name,
+                        seq=rec.seq,
+                        lap=rec.lap,
+                        kind=rec.kind,
+                        anchor=str(
+                            rec.payload.get("anchor") or rec.payload.get("heading") or ""
+                        )[:200],
+                        reason=rec.reason,
                     )
+                    row.payload = rec.payload
+                    db.add(row)
+                conv.shared_proposal = outcome.doc_after
+                write_shared_doc(conv.id, outcome.doc_after)
+                doc_diff = format_doc_change(before_doc, outcome.doc_after)
+                conv.doc_rev += 1
+                content = content or "Updated the shared document."
 
             forfeit = act.action == "forfeit"
-            vote_proposal = act.proposal or conv.shared_proposal
+            vote_proposal = outcome.doc_after or conv.shared_proposal
             msg = Message(
-                id=new_id(),
+                id=msg_id,
                 tenant_id=conv.tenant_id,
                 conversation_id=conv.id,
                 expert_id=expert.id,
@@ -224,9 +234,13 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                     if conv.consult_until_lap is None or conv.lap >= conv.consult_until_lap:
                         conv.status = "converged"
                         conv.consult_until_lap = None
+                        # The question was binding direction while it was live; a
+                        # stale one must not command every future turn.
+                        conv.user_direction = ""
                 elif lap_converged(laps_done=conv.lap, chair_count=len(chairs), turns=turns):
                     conv.status = "converged"
                     conv.converged_solution = conv.shared_proposal
+                    conv.user_direction = ""
                 elif conv.lap >= settings.safety_lap_ceiling:
                     conv.status = "safety_pause"
 
