@@ -97,3 +97,58 @@ def test_compiled_ops_fold_like_any_others():
     ops, _, _ = compile_plan([add], doc_text=fold(base).text, start_seq=2, lap=2)
     folded = fold(base + ops)
     assert "## FAQ" in folded.text and folded.blame["faq"].expert_name == "Cy"
+
+
+# --- ledger-semantics fixes found in live rooms (Bertrand's Box, Two-Envelope) ---
+
+
+def test_rejected_amendment_revives_the_original():
+    """Room 1: P2 amended by P3; P3 rejected. Under the old rule P2 stayed
+    superseded and nothing approved survived - the room had to re-propose the
+    consensus text. Now the room said no to the amendment, not to P2."""
+    p2 = P(2, "edit_section", {"anchor": "pricing", "new_text": "## Pricing\nv2"}, by="Sol")
+    p3 = P(3, "edit_section", {"anchor": "pricing", "new_text": "## Pricing\nv3"}, by="Ada", supersedes=2)
+    p2.superseded_by = 3
+    votes = [
+        VoteRecord(2, "Bo", "agree"), VoteRecord(2, "Cy", "agree"),  # P2 had full support
+        VoteRecord(3, "Sol", "reject", "adds nothing"), VoteRecord(3, "Bo", "reject", "scope"),
+    ]
+    s = settle([p2, p3], votes, voters=SEATS + ["Sol"])
+    assert s.rejected == [p3]
+    assert p2 in s.approved or p2 in s.open  # revived, not superseded
+    assert p2 not in s.superseded
+
+
+def test_amendment_chain_looks_through_rejected_links():
+    """P1 <- P2 (rejected) <- P3 (live, amends P2): P1 is still superseded, by
+    the live P3 at the end of the chain."""
+    p1 = P(1, "delete_section", {"anchor": "pricing-bo"}, by="Ada")
+    p2 = P(2, "delete_section", {"anchor": "pricing-bo"}, by="Bo", supersedes=1)
+    p3 = P(3, "delete_section", {"anchor": "pricing-bo"}, by="Cy", supersedes=2)
+    p1.superseded_by, p2.superseded_by = 2, 3
+    s = settle([p1, p2, p3], [VoteRecord(2, "Ada", "reject", "x")], voters=SEATS)
+    # P1 and P2 are both replaced by the live P3; P3 is what the room votes on.
+    assert p1 in s.superseded and p2 in s.superseded and p3 in s.open
+
+
+def test_executed_proposals_are_history_not_plan():
+    """Room 2: after execution, P5 (still 'approved' in the DB) was recompiled
+    on the next execution pass and reported as skipped. Terminal statuses are
+    sticky - the ledger never re-plans them."""
+    done = P(1, "delete_section", {"anchor": "pricing-bo"}, status="executed")
+    fresh = P(2, "add_section", {"heading": "FAQ", "text": "q&a"}, by="Bo")
+    s = settle([done, fresh], [VoteRecord(2, "Ada", "agree"), VoteRecord(2, "Cy", "agree")], voters=SEATS)
+    assert s.approved == [fresh]
+    assert done not in s.approved + s.open + s.rejected + s.superseded
+
+
+def test_duplicate_topics_flags_unreconciled_sections():
+    from conclave.domain.proposals import duplicate_topics
+
+    # Room 2's leftover: an executed merge missed "resolution-2".
+    groups = duplicate_topics(["intro", "resolution", "resolution-2", "faq"])
+    assert groups == [["resolution", "resolution-2"]]
+    # Union-seed author collisions count too; unrelated hyphens do not.
+    groups = duplicate_topics(["plan", "plan-bo", "bottom-line", "costs"])
+    assert ["plan", "plan-bo"] in groups and len(groups) == 1
+    assert duplicate_topics(["a", "b", "c"]) == []

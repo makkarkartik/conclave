@@ -14,6 +14,7 @@ from conclave.domain.proposals import (
     ProposalRecord,
     dry_run,
     next_num,
+    open_nums,
     sanitize_payload,
 )
 from conclave.domain.files import read_attachment_text
@@ -437,11 +438,19 @@ class ProposalTools:
         existing: list[ProposalRecord],
         expert_name: str,
         lap: int,
+        open_set: set[int] | None = None,
     ) -> None:
         self._doc = doc_text
         self._existing = list(existing)
         self._expert_name = expert_name
         self._lap = lap
+        # Which existing proposals may be amended: the ledger's open set (a
+        # revived original counts), else the stored status.
+        self._open = (
+            set(open_set)
+            if open_set is not None
+            else {p.num for p in existing if p.status == "open"}
+        )
         self.staged: list[ProposalRecord] = []
 
     def _next_num(self) -> int:
@@ -474,7 +483,7 @@ class ProposalTools:
         amends = args.get("amends")
         payload = sanitize_payload({k: v for k, v in args.items() if k != "amends"})
         if amends is not None:
-            live = {p.num for p in self._existing + self.staged if p.status == "open"}
+            live = self._open | {p.num for p in self.staged}
             if amends not in live:
                 return f"Not staged: P{amends} is not an open proposal to amend"
         rec = ProposalRecord(
@@ -539,6 +548,9 @@ async def run_expert_turn(
         existing=context.proposals,
         expert_name=name,
         lap=lap,
+        open_set=open_nums(context.proposals, context.votes, voters=context.voters)
+        if context.voters
+        else None,
     )
     if tool_providers is not None:
         providers = tool_providers

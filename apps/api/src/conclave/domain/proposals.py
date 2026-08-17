@@ -141,6 +141,9 @@ def dry_run(prop: ProposalRecord, *, doc_text: str) -> str | None:
 # --- settlement ---------------------------------------------------------------
 
 
+TERMINAL = ("executed", "skipped")
+
+
 def settle(
     proposals: list[ProposalRecord],
     votes: list[VoteRecord],
@@ -152,17 +155,37 @@ def settle(
       on record; one is enough to keep a change out of the plan;
     - approved when it has no reject and every seat other than its author has voted;
     - open otherwise (some seat still owes a vote);
-    - superseded when an amendment replaced it.
-    A proposal's own author never votes on it."""
+    - superseded when a *live* amendment replaced it. An amendment that is itself
+      rejected revives the original: the room said no to the change, not to the
+      thing it was changing, and the original's votes still stand.
+    Terminal statuses (executed, skipped) are sticky: an executed proposal is
+    history, never re-planned. A proposal's own author never votes on it."""
     rejected_nums: set[int] = set()
     voted: dict[int, set[str]] = {}
     for v in votes:
         voted.setdefault(v.proposal_num, set()).add(v.expert_name)
         if v.stance == "reject":
             rejected_nums.add(v.proposal_num)
+    by_num = {p.num: p for p in proposals}
+
+    def superseded_live(p: ProposalRecord) -> bool:
+        """True if some chain of amendments off p is still alive (not rejected)."""
+        nxt = p.superseded_by
+        while nxt is not None and nxt in by_num:
+            amend = by_num[nxt]
+            if amend.status in TERMINAL:
+                return True
+            if amend.num not in rejected_nums:
+                return True
+            # This amendment was rejected; look through it to any amendment *of it*.
+            nxt = amend.superseded_by
+        return False
+
     out = Settlement()
     for p in proposals:
-        if p.superseded_by is not None or p.status == "superseded":
+        if p.status in TERMINAL:
+            continue  # history, not part of the live ledger
+        if superseded_live(p):
             out.superseded.append(p)
         elif p.num in rejected_nums:
             out.rejected.append(p)
@@ -170,6 +193,39 @@ def settle(
             out.approved.append(p)
         else:
             out.open.append(p)
+    return out
+
+
+def open_nums(
+    proposals: list[ProposalRecord], votes: list[VoteRecord], *, voters: list[str]
+) -> set[int]:
+    """Numbers of proposals currently awaiting votes — the only ones a seat may
+    vote on or amend. Derived from settle(), so a revived original counts."""
+    return {p.num for p in settle(proposals, votes, voters=voters).open}
+
+
+def duplicate_topics(anchors: list[str]) -> list[list[str]]:
+    """Groups of anchors that look like the same topic left unreconciled — the
+    union seed's collision suffixes ("plan", "plan-bo") or a numeric suffix
+    ("resolution", "resolution-2"). Reported to the confirmation lap so a merge
+    that missed one is caught immediately, not a lap later."""
+    import re
+
+    groups: dict[str, list[str]] = {}
+    for a in anchors:
+        base = re.sub(r"-\d+$", "", a)
+        groups.setdefault(base, []).append(a)
+    out = [g for g in groups.values() if len(g) > 1]
+    # Author-suffixed collisions: "x-<name>" where "x" also exists.
+    present = set(anchors)
+    for a in anchors:
+        for b in anchors:
+            if b != a and b.startswith(a + "-") and a in present:
+                grp = next((g for g in out if a in g), None)
+                if grp is None:
+                    out.append([a, b])
+                elif b not in grp:
+                    grp.append(b)
     return out
 
 

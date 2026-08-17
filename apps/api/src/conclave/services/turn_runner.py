@@ -26,7 +26,7 @@ from conclave.domain.converge import lap_settled, min_laps
 from conclave.domain.diff import format_doc_change
 from conclave.domain.docops import available_anchors, fold, seed_ops_from_drafts, slugify
 from conclave.domain.files import write_shared_doc
-from conclave.domain.proposals import compile_plan, settle
+from conclave.domain.proposals import compile_plan, duplicate_topics, open_nums, settle
 from conclave.domain.schemas import PollAct
 from conclave.runtime.turn import (
     DraftOutcome,
@@ -373,6 +373,14 @@ async def _run_execute(db, conv: Conversation, chairs: list[str]) -> None:
             "Skipped (no longer applicable after earlier changes): "
             + "; ".join(f"P{sp.num} — {why}" for sp, why in skipped)
         )
+    # Surface what the plan left unreconciled, so the confirmation lap sees it
+    # at once instead of discovering it a lap later.
+    leftovers = duplicate_topics(available_anchors(doc_after if ops else doc_before))
+    if leftovers:
+        lines.append(
+            "Note for the confirmation lap — sections that still look like duplicated topics: "
+            + "; ".join("§" + " / §".join(g) for g in leftovers)
+        )
     msg = Message(
         id=msg_id,
         tenant_id=conv.tenant_id,
@@ -609,7 +617,7 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
             # votes atomically with the message. Nothing touches doc_ops here.
             staged = list(outcome.staged_proposals)
             existing_props, existing_votes = context.proposals, context.votes
-            live_nums = {p.num for p in existing_props if p.status == "open"} | {
+            live_nums = open_nums(existing_props, existing_votes, voters=context.voters) | {
                 p.num for p in staged
             }
             for rec in staged:
@@ -663,6 +671,20 @@ async def run_one_turn(conversation_id: str, worker_id: str) -> None:
                     )
                 )
                 already.add((v.proposal, expert.name))
+            # Sync stored statuses to the ledger's view — a rejected amendment
+            # revives its original (superseded -> open), and stays that way.
+            await db.flush()
+            _props, _votes = await load_proposals(db, conv)
+            _st = settle(_props, _votes, voters=context.voters)
+            _status = {p.num: "open" for p in _st.open}
+            _status.update({p.num: "approved" for p in _st.approved})
+            _status.update({p.num: "rejected" for p in _st.rejected})
+            _status.update({p.num: "superseded" for p in _st.superseded})
+            for r in (
+                await db.scalars(select(Proposal).where(Proposal.conversation_id == conv.id))
+            ).all():
+                if r.num in _status and r.status not in ("executed", "skipped"):
+                    r.status = _status[r.num]
             if act.votes:
                 agrees = sum(1 for v in act.votes if v.stance == "agree")
                 rejects = sum(1 for v in act.votes if v.stance == "reject")
